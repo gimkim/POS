@@ -292,7 +292,6 @@ input:focus, select:focus {
   align-self: start;
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 116px);
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -309,7 +308,7 @@ input:focus, select:focus {
 }
 
 .cart-items {
-  overflow: auto;
+  overflow: visible;
   padding: 10px 16px;
 }
 
@@ -359,7 +358,6 @@ input:focus, select:focus {
 }
 
 .checkout-box {
-  margin-top: auto;
   padding: 16px;
   border-top: 1px solid var(--line);
   display: grid;
