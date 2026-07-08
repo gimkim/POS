@@ -6,6 +6,8 @@ const money = new Intl.NumberFormat("th-TH", {
 
 const STORAGE_KEY = "event-pos-data-v1";
 const DEFAULT_CATEGORY_ID = "general";
+const MAX_IMAGE_SIDE = 2048;
+const IMAGE_EXPORT_QUALITY = 0.86;
 const PAYMENT_LABELS = {
   cash: "เงินสด",
   transfer: "โอน"
@@ -575,7 +577,7 @@ function renderCategoryOptions(selectedId = "") {
   select.value = state.categories.some((category) => category.id === selectedId) ? selectedId : DEFAULT_CATEGORY_ID;
 }
 
-function handleImagePick(event) {
+async function handleImagePick(event) {
   const file = event.target.files?.[0];
   if (!file) return;
   if (!file.type.startsWith("image/")) {
@@ -583,14 +585,70 @@ function handleImagePick(event) {
     event.target.value = "";
     return;
   }
-  const reader = new FileReader();
-  reader.addEventListener("load", () => setImageField(String(reader.result || "")));
-  reader.readAsDataURL(file);
+  try {
+    setImageField(await resizeImageFile(file));
+  } catch {
+    alert("ย่อรูปไม่สำเร็จ กรุณาเลือกรูปภาพไฟล์อื่น");
+    event.target.value = "";
+  }
 }
 
 function setImageField(value) {
   els.productImageData.value = value;
   els.productImagePreview.src = value || PLACEHOLDER_IMAGE;
+}
+
+async function resizeImageFile(file) {
+  if (file.type === "image/svg+xml") return fileToDataUrl(file);
+  const image = await loadImage(file);
+  const scale = Math.min(1, MAX_IMAGE_SIDE / Math.max(image.width, image.height));
+  const width = Math.max(1, Math.round(image.width * scale));
+  const height = Math.max(1, Math.round(image.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { alpha: false });
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, width, height);
+  context.drawImage(image, 0, 0, width, height);
+  closeImage(image);
+  const blob = await canvasToBlob(canvas, "image/jpeg", IMAGE_EXPORT_QUALITY);
+  return blob ? fileToDataUrl(blob) : canvas.toDataURL("image/jpeg", IMAGE_EXPORT_QUALITY);
+}
+
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("image load failed"));
+    };
+    image.src = url;
+  });
+}
+
+function closeImage(image) {
+  if (typeof image.close === "function") image.close();
+}
+
+function canvasToBlob(canvas, type, quality) {
+  return new Promise((resolve) => {
+    canvas.toBlob(resolve, type, quality);
+  });
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result || "")));
+    reader.addEventListener("error", reject);
+    reader.readAsDataURL(file);
+  });
 }
 
 function showReceipt(receipt) {
