@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0f766e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Event POS">
+    <title>Event POS</title>
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Event POS</p>
+        <h1>ขายของและตัดสต็อก</h1>
+      </div>
+      <div class="header-actions">
+        <button class="ghost" id="exportBtn" type="button">ส่งออกข้อมูล</button>
+        <button class="primary" id="newProductBtn" type="button">เพิ่มสินค้า</button>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <section class="workspace" aria-label="รายการสินค้า">
+        <div class="toolbar">
+          <label class="search-box">
+            <span>ค้นหา</span>
+            <input id="searchInput" type="search" placeholder="ชื่อสินค้า, SKU หรือหมวด">
+          </label>
+          <div class="segmented" role="tablist" aria-label="มุมมอง">
+            <button class="active" id="sellTab" type="button">ขาย</button>
+            <button id="stockTab" type="button">สต็อก</button>
+            <button id="historyTab" type="button">บิล</button>
+          </div>
+        </div>
+
+        <div class="summary-strip">
+          <div>
+            <span>ยอดวันนี้</span>
+            <strong id="todaySales">฿0</strong>
+          </div>
+          <div>
+            <span>จำนวนบิล</span>
+            <strong id="todayBills">0</strong>
+          </div>
+          <div>
+            <span>สินค้าใกล้หมด</span>
+            <strong id="lowStockCount">0</strong>
+          </div>
+        </div>
+
+        <div id="sellView" class="view active">
+          <div class="product-grid" id="productGrid"></div>
+          <div class="empty-state" id="productEmpty" hidden>
+            <h2>ยังไม่มีสินค้า</h2>
+            <p>กด “เพิ่มสินค้า” เพื่อเริ่มตั้งรายการขายของงานนี้</p>
+          </div>
+        </div>
+
+        <div id="stockView" class="view">
+          <div class="stock-list" id="stockList"></div>
+        </div>
+
+        <div id="historyView" class="view">
+          <div class="history-list" id="historyList"></div>
+          <div class="empty-state" id="historyEmpty" hidden>
+            <h2>ยังไม่มีบิล</h2>
+            <p>เมื่อปิดการขายแล้ว บิลจะมาอยู่ตรงนี้</p>
+          </div>
+        </div>
+      </section>
+
+      <aside class="cart-panel" aria-label="บิลปัจจุบัน">
+        <div class="cart-head">
+          <div>
+            <p class="eyebrow">บิลปัจจุบัน</p>
+            <h2 id="billNumber">#0001</h2>
+          </div>
+          <button class="ghost danger" id="clearCartBtn" type="button">ล้าง</button>
+        </div>
+
+        <div class="cart-items" id="cartItems"></div>
+        <div class="empty-cart" id="emptyCart">แตะสินค้าเพื่อเพิ่มลงบิล</div>
+
+        <div class="checkout-box">
+          <label>
+            ชื่อลูกค้า
+            <input id="customerInput" autocomplete="off" placeholder="เช่น คุณแอน / ลูกค้าหน้าร้าน">
+          </label>
+          <label>
+            ช่องทางจ่ายเงิน
+            <select id="paymentMethod">
+              <option value="cash">เงินสด</option>
+              <option value="transfer">โอน</option>
+            </select>
+          </label>
+          <div class="form-grid">
+            <label>
+              ส่วนลด
+              <input id="discountInput" inputmode="decimal" type="number" min="0" step="1" value="0">
+            </label>
+            <label>
+              รับเงิน
+              <input id="paidInput" inputmode="decimal" type="number" min="0" step="1" placeholder="0">
+            </label>
+          </div>
+          <div class="totals">
+            <div><span>รวม</span><strong id="subtotal">฿0</strong></div>
+            <div><span>ยอดสุทธิ</span><strong id="grandTotal">฿0</strong></div>
+            <div><span>เงินทอน</span><strong id="changeDue">฿0</strong></div>
+          </div>
+          <button class="checkout" id="checkoutBtn" type="button">ปิดการขาย</button>
+        </div>
+      </aside>
+    </main>
+
+    <dialog id="productDialog">
+      <form method="dialog" id="productForm" class="dialog-card">
+        <div class="dialog-head">
+          <h2 id="dialogTitle">เพิ่มสินค้า</h2>
+          <button class="icon-btn" id="closeDialogBtn" type="button" aria-label="ปิด">×</button>
+        </div>
+        <input type="hidden" id="productId">
+        <input type="hidden" id="productImageData">
+        <label class="image-picker">
+          รูปสินค้า
+          <div class="image-preview-wrap">
+            <img id="productImagePreview" alt="ตัวอย่างรูปสินค้า">
+            <span>แตะเพื่อเลือกรูป</span>
+          </div>
+          <input id="productImage" type="file" accept="image/*">
+        </label>
+        <button class="ghost compact" id="clearImageBtn" type="button">ใช้รูป placeholder</button>
+        <label>ชื่อสินค้า<input id="productName" required autocomplete="off"></label>
+        <label>SKU / รหัส<input id="productSku" autocomplete="off"></label>
+        <label>หมวดหมู่<input id="productCategory" autocomplete="off"></label>
+        <div class="form-grid">
+          <label>ราคา<input id="productPrice" required type="number" min="0" step="1" inputmode="decimal"></label>
+          <label>สต็อก<input id="productStock" required type="number" min="0" step="1" inputmode="numeric"></label>
+        </div>
+        <label>แจ้งเตือนใกล้หมด<input id="productLowStock" type="number" min="0" step="1" inputmode="numeric" value="3"></label>
+        <div class="dialog-actions">
+          <button class="ghost danger" id="deleteProductBtn" type="button" hidden>ลบสินค้า</button>
+          <button class="primary" value="default" type="submit">บันทึก</button>
+        </div>
+      </form>
+    </dialog>
+
+    <template id="productTemplate">
+      <article class="product-card">
+        <img class="product-photo" alt="">
+        <div class="product-body">
+          <span class="category"></span>
+          <h3></h3>
+          <p class="sku"></p>
+          <div class="product-meta">
+            <strong class="price"></strong>
+            <span class="stock"></span>
+          </div>
+        </div>
+      </article>
+    </template>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>
