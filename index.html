@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-title" content="Event POS">
     <title>Event POS</title>
     <link rel="manifest" href="./manifest.webmanifest">
-    <link rel="stylesheet" href="./styles.css?v=5">
+    <link rel="stylesheet" href="./styles.css?v=6">
   </head>
   <body>
     <header class="app-header">
@@ -18,8 +18,10 @@
       </div>
       <div class="header-actions">
         <button class="ghost" id="exportBtn" type="button">ส่งออกข้อมูล</button>
+        <button class="ghost" id="importBtn" type="button">นำเข้าข้อมูล</button>
         <button class="ghost" id="categoryBtn" type="button">จัดการหมวดหมู่</button>
         <button class="primary" id="newProductBtn" type="button">เพิ่มสินค้า</button>
+        <input id="importZipInput" type="file" accept=".zip,application/zip" hidden>
       </div>
     </header>
 
@@ -226,6 +228,6 @@
       </article>
     </template>
 
-    <script src="./app.js?v=5" defer></script>
+    <script src="./app.js?v=6" defer></script>
   </body>
 </html>

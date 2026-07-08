@@ -79,6 +79,7 @@ const els = {
   receiptTotal: document.querySelector("#receiptTotal"),
   receiptPaid: document.querySelector("#receiptPaid"),
   receiptChange: document.querySelector("#receiptChange"),
+  importZipInput: document.querySelector("#importZipInput"),
   dialogTitle: document.querySelector("#dialogTitle"),
   deleteProductBtn: document.querySelector("#deleteProductBtn"),
   productImage: document.querySelector("#productImage"),
@@ -95,6 +96,8 @@ document.querySelector("#clearImageBtn").addEventListener("click", () => setImag
 document.querySelector("#clearCartBtn").addEventListener("click", clearCart);
 document.querySelector("#checkoutBtn").addEventListener("click", checkout);
 document.querySelector("#exportBtn").addEventListener("click", exportData);
+document.querySelector("#importBtn").addEventListener("click", () => els.importZipInput.click());
+els.importZipInput.addEventListener("change", importDataZip);
 els.discountInput.addEventListener("input", renderCart);
 els.paidInput.addEventListener("input", renderCart);
 els.paymentMethod.addEventListener("change", renderCart);
@@ -620,14 +623,102 @@ function showReceipt(receipt) {
   els.receiptDialog.showModal();
 }
 
-function exportData() {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+async function exportData() {
+  const { data, imageFiles } = await buildPortableExport();
+  const files = [
+    {
+      path: "data.json",
+      bytes: new TextEncoder().encode(JSON.stringify(data, null, 2))
+    },
+    ...imageFiles
+  ];
+  const blob = createZip(files);
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `event-pos-${new Date().toISOString().slice(0, 10)}.json`;
+  link.download = `event-pos-${dateKey()}.zip`;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+async function buildPortableExport() {
+  const data = JSON.parse(JSON.stringify(state));
+  const imageFiles = [];
+  const seenImages = new Map();
+
+  for (const product of data.products || []) {
+    product.imageFile = await addImageFile(product.image, `product-${product.id || crypto.randomUUID()}`, imageFiles, seenImages);
+    delete product.image;
+  }
+
+  for (const receipt of data.receipts || []) {
+    for (const item of receipt.items || []) {
+      item.imageFile = await addImageFile(item.image, `receipt-${receipt.billNo || "bill"}-${item.productId || item.sku || item.name}`, imageFiles, seenImages);
+      delete item.image;
+    }
+  }
+
+  return { data, imageFiles };
+}
+
+async function addImageFile(dataUrl, fallbackName, imageFiles, seenImages) {
+  if (!dataUrl || !dataUrl.startsWith("data:image/")) return "";
+  if (seenImages.has(dataUrl)) return seenImages.get(dataUrl);
+  const parsed = parseDataUrl(dataUrl);
+  if (!parsed) return "";
+  const ext = imageExtension(parsed.mime);
+  const path = `images/${safeFileName(fallbackName)}-${imageFiles.length + 1}.${ext}`;
+  imageFiles.push({ path, bytes: parsed.bytes });
+  seenImages.set(dataUrl, path);
+  return path;
+}
+
+async function importDataZip(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+  try {
+    const entries = readZip(new Uint8Array(await file.arrayBuffer()));
+    const dataBytes = entries.get("data.json");
+    if (!dataBytes) throw new Error("missing data.json");
+    const imported = JSON.parse(new TextDecoder().decode(dataBytes));
+    restoreImages(imported, entries);
+    migrateCategories(imported);
+    imported.cart ||= [];
+    imported.receipts ||= [];
+    imported.nextBill ||= 1;
+    if (!Array.isArray(imported.products)) imported.products = [];
+    if (!Array.isArray(imported.categories)) imported.categories = [{ id: DEFAULT_CATEGORY_ID, name: "ทั่วไป" }];
+    if (!confirm("นำเข้าข้อมูลจาก ZIP นี้ไหม? ข้อมูลในเครื่องนี้จะถูกแทนที่ทั้งหมด")) return;
+    for (const key of Object.keys(state)) delete state[key];
+    Object.assign(state, imported);
+    saveState();
+    render();
+    alert("นำเข้าข้อมูลเรียบร้อยแล้ว");
+  } catch (error) {
+    alert("นำเข้า ZIP ไม่สำเร็จ กรุณาเลือกไฟล์ที่ export จาก Event POS");
+  }
+}
+
+function restoreImages(data, entries) {
+  for (const product of data.products || []) {
+    product.image = imageFileToDataUrl(product.imageFile, entries) || product.image || "";
+    delete product.imageFile;
+  }
+  for (const receipt of data.receipts || []) {
+    for (const item of receipt.items || []) {
+      item.image = imageFileToDataUrl(item.imageFile, entries) || item.image || "";
+      delete item.imageFile;
+    }
+  }
+}
+
+function imageFileToDataUrl(path, entries) {
+  if (!path) return "";
+  const bytes = entries.get(path);
+  if (!bytes) return "";
+  const mime = mimeFromPath(path);
+  return `data:${mime};base64,${uint8ToBase64(bytes)}`;
 }
 
 function findProduct(id) {
@@ -732,4 +823,176 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function parseDataUrl(dataUrl) {
+  const match = dataUrl.match(/^data:([^;,]+)(;base64)?,(.*)$/);
+  if (!match) return null;
+  const mime = match[1];
+  const isBase64 = Boolean(match[2]);
+  const payload = match[3];
+  const bytes = isBase64
+    ? base64ToUint8(payload)
+    : new TextEncoder().encode(decodeURIComponent(payload));
+  return { mime, bytes };
+}
+
+function createZip(files) {
+  const encoder = new TextEncoder();
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+  const { date, time } = dosDateTime(new Date());
+
+  for (const file of files) {
+    const nameBytes = encoder.encode(file.path);
+    const bytes = file.bytes;
+    const crc = crc32(bytes);
+    const local = new Uint8Array(30 + nameBytes.length);
+    const localView = new DataView(local.buffer);
+    localView.setUint32(0, 0x04034b50, true);
+    localView.setUint16(4, 20, true);
+    localView.setUint16(6, 0x0800, true);
+    localView.setUint16(8, 0, true);
+    localView.setUint16(10, time, true);
+    localView.setUint16(12, date, true);
+    localView.setUint32(14, crc, true);
+    localView.setUint32(18, bytes.length, true);
+    localView.setUint32(22, bytes.length, true);
+    localView.setUint16(26, nameBytes.length, true);
+    local.set(nameBytes, 30);
+    localParts.push(local, bytes);
+
+    const central = new Uint8Array(46 + nameBytes.length);
+    const centralView = new DataView(central.buffer);
+    centralView.setUint32(0, 0x02014b50, true);
+    centralView.setUint16(4, 20, true);
+    centralView.setUint16(6, 20, true);
+    centralView.setUint16(8, 0x0800, true);
+    centralView.setUint16(10, 0, true);
+    centralView.setUint16(12, time, true);
+    centralView.setUint16(14, date, true);
+    centralView.setUint32(16, crc, true);
+    centralView.setUint32(20, bytes.length, true);
+    centralView.setUint32(24, bytes.length, true);
+    centralView.setUint16(28, nameBytes.length, true);
+    centralView.setUint32(42, offset, true);
+    central.set(nameBytes, 46);
+    centralParts.push(central);
+    offset += local.length + bytes.length;
+  }
+
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  const end = new Uint8Array(22);
+  const endView = new DataView(end.buffer);
+  endView.setUint32(0, 0x06054b50, true);
+  endView.setUint16(8, files.length, true);
+  endView.setUint16(10, files.length, true);
+  endView.setUint32(12, centralSize, true);
+  endView.setUint32(16, offset, true);
+  return new Blob([...localParts, ...centralParts, end], { type: "application/zip" });
+}
+
+function readZip(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let eocd = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 66000); i -= 1) {
+    if (view.getUint32(i, true) === 0x06054b50) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) throw new Error("invalid zip");
+  const entryCount = view.getUint16(eocd + 10, true);
+  let centralOffset = view.getUint32(eocd + 16, true);
+  const entries = new Map();
+  const decoder = new TextDecoder();
+
+  for (let i = 0; i < entryCount; i += 1) {
+    if (view.getUint32(centralOffset, true) !== 0x02014b50) throw new Error("invalid central directory");
+    const method = view.getUint16(centralOffset + 10, true);
+    if (method !== 0) throw new Error("unsupported zip compression");
+    const compressedSize = view.getUint32(centralOffset + 20, true);
+    const nameLength = view.getUint16(centralOffset + 28, true);
+    const extraLength = view.getUint16(centralOffset + 30, true);
+    const commentLength = view.getUint16(centralOffset + 32, true);
+    const localOffset = view.getUint32(centralOffset + 42, true);
+    const name = decoder.decode(bytes.slice(centralOffset + 46, centralOffset + 46 + nameLength));
+    const localNameLength = view.getUint16(localOffset + 26, true);
+    const localExtraLength = view.getUint16(localOffset + 28, true);
+    const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+    entries.set(name, bytes.slice(dataStart, dataStart + compressedSize));
+    centralOffset += 46 + nameLength + extraLength + commentLength;
+  }
+  return entries;
+}
+
+function crc32(bytes) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc = CRC32_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i += 1) {
+    let value = i;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    }
+    table[i] = value >>> 0;
+  }
+  return table;
+})();
+
+function dosDateTime(dateValue) {
+  const year = Math.max(1980, dateValue.getFullYear());
+  const date = ((year - 1980) << 9) | ((dateValue.getMonth() + 1) << 5) | dateValue.getDate();
+  const time = (dateValue.getHours() << 11) | (dateValue.getMinutes() << 5) | Math.floor(dateValue.getSeconds() / 2);
+  return { date, time };
+}
+
+function base64ToUint8(value) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function uint8ToBase64(bytes) {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.slice(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function imageExtension(mime) {
+  if (mime === "image/jpeg") return "jpg";
+  if (mime === "image/png") return "png";
+  if (mime === "image/webp") return "webp";
+  if (mime === "image/gif") return "gif";
+  if (mime === "image/svg+xml") return "svg";
+  return "img";
+}
+
+function mimeFromPath(path) {
+  const ext = path.split(".").pop()?.toLowerCase();
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "png") return "image/png";
+  if (ext === "webp") return "image/webp";
+  if (ext === "gif") return "image/gif";
+  if (ext === "svg") return "image/svg+xml";
+  return "application/octet-stream";
+}
+
+function safeFileName(value) {
+  return String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9ก-๙]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "image";
 }
