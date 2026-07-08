@@ -9,6 +9,7 @@ const IMAGE_DB_NAME = "event-pos-images";
 const IMAGE_DB_VERSION = 1;
 const IMAGE_STORE_NAME = "images";
 const DEFAULT_CATEGORY_ID = "general";
+const PROMPTPAY_PHONE = "0800517904";
 const MAX_IMAGE_SIDE = 2048;
 const IMAGE_EXPORT_QUALITY = 0.86;
 const DEFAULT_APP_TITLE = "ขายของและตัดสต็อก";
@@ -65,6 +66,9 @@ const els = {
   checkoutTitle: document.querySelector("#checkoutTitle"),
   checkoutReviewItems: document.querySelector("#checkoutReviewItems"),
   checkoutButtonTotal: document.querySelector("#checkoutButtonTotal"),
+  promptpayBox: document.querySelector("#promptpayBox"),
+  promptpayQr: document.querySelector("#promptpayQr"),
+  promptpayAmount: document.querySelector("#promptpayAmount"),
   subtotal: document.querySelector("#subtotal"),
   promotionDiscount: document.querySelector("#promotionDiscount"),
   manualDiscount: document.querySelector("#manualDiscount"),
@@ -74,7 +78,9 @@ const els = {
   customerInput: document.querySelector("#customerInput"),
   paymentMethod: document.querySelector("#paymentMethod"),
   discountInput: document.querySelector("#discountInput"),
+  paidField: document.querySelector("#paidField"),
   paidInput: document.querySelector("#paidInput"),
+  changeDueRow: document.querySelector("#changeDueRow"),
   searchInput: document.querySelector("#searchInput"),
   todaySales: document.querySelector("#todaySales"),
   todayBills: document.querySelector("#todayBills"),
@@ -525,15 +531,31 @@ function renderCart() {
   const manualDiscount = getManualDiscount();
   const discount = promotionDiscount + manualDiscount;
   const total = Math.max(0, subtotal - discount);
-  const paid = Number(els.paidInput.value || 0);
+  const isCash = els.paymentMethod.value === "cash";
+  const paid = isCash ? getPaidAmount(total) : total;
   els.subtotal.textContent = money.format(subtotal);
   els.promotionDiscount.textContent = discountText(promotionDiscount);
   els.manualDiscount.textContent = discountText(manualDiscount);
   els.grandTotal.textContent = money.format(total);
   els.changeDue.textContent = money.format(Math.max(0, paid - total));
   els.checkoutButtonTotal.textContent = money.format(total);
+  els.paidField.hidden = !isCash;
+  els.changeDueRow.hidden = !isCash;
+  els.promptpayBox.hidden = isCash || state.cart.length === 0;
+  if (!isCash && state.cart.length > 0) renderPromptPayQr(total);
   document.querySelector("#checkoutBtn").disabled = state.cart.length === 0;
   renderCheckoutReview();
+}
+
+function getPaidAmount(total) {
+  const value = els.paidInput.value.trim();
+  return value === "" ? total : Number(value || 0);
+}
+
+function renderPromptPayQr(total) {
+  const payload = createPromptPayPayload(PROMPTPAY_PHONE, total);
+  els.promptpayQr.innerHTML = createQrSvg(payload);
+  els.promptpayAmount.textContent = money.format(total);
 }
 
 function openCheckoutDialog() {
@@ -648,6 +670,7 @@ function checkout() {
   const manualDiscount = getManualDiscount();
   const discount = promotionDiscount + manualDiscount;
   const total = Math.max(0, subtotal - discount);
+  const paid = els.paymentMethod.value === "cash" ? getPaidAmount(total) : total;
   state.receipts.push({
     billNo: state.nextBill,
     createdAt: new Date().toISOString(),
@@ -660,12 +683,12 @@ function checkout() {
     promotions: promotions.applied,
     discount,
     total,
-    paid: Number(els.paidInput.value || 0)
+    paid
   });
   state.nextBill += 1;
   state.cart = [];
   els.customerInput.value = "";
-  els.paymentMethod.value = "cash";
+  els.paymentMethod.value = "transfer";
   els.discountInput.value = "0";
   els.paidInput.value = "";
   if (els.checkoutDialog.open) els.checkoutDialog.close();
@@ -676,7 +699,7 @@ function checkout() {
 function clearCart() {
   state.cart = [];
   els.customerInput.value = "";
-  els.paymentMethod.value = "cash";
+  els.paymentMethod.value = "transfer";
   els.discountInput.value = "0";
   els.paidInput.value = "";
   if (els.checkoutDialog.open) els.checkoutDialog.close();
@@ -1144,6 +1167,291 @@ function paymentLabel(value) {
 
 function discountText(value) {
   return value > 0 ? `-${money.format(value)}` : money.format(0);
+}
+
+function createPromptPayPayload(phone, amount) {
+  const mobile = `0066${phone.replace(/\D/g, "").replace(/^0/, "")}`;
+  const merchantInfo = emv("00", "A000000677010111") + emv("01", mobile);
+  const payload =
+    emv("00", "01") +
+    emv("01", "12") +
+    emv("29", merchantInfo) +
+    emv("58", "TH") +
+    emv("53", "764") +
+    emv("54", amount.toFixed(2)) +
+    "6304";
+  return `${payload}${crc16(payload)}`;
+}
+
+function emv(id, value) {
+  return `${id}${String(value.length).padStart(2, "0")}${value}`;
+}
+
+function crc16(value) {
+  let crc = 0xffff;
+  for (let index = 0; index < value.length; index += 1) {
+    crc ^= value.charCodeAt(index) << 8;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = crc & 0x8000 ? (crc << 1) ^ 0x1021 : crc << 1;
+      crc &= 0xffff;
+    }
+  }
+  return crc.toString(16).toUpperCase().padStart(4, "0");
+}
+
+function createQrSvg(text) {
+  const qr = makeQr(text);
+  const quiet = 4;
+  const scale = 5;
+  const size = qr.length + quiet * 2;
+  const rects = [];
+  for (let y = 0; y < qr.length; y += 1) {
+    for (let x = 0; x < qr.length; x += 1) {
+      if (qr[y][x]) rects.push(`<rect x="${x + quiet}" y="${y + quiet}" width="1" height="1"/>`);
+    }
+  }
+  return `<svg viewBox="0 0 ${size} ${size}" width="${size * scale}" height="${size * scale}" role="img" aria-label="PromptPay QR"><rect width="${size}" height="${size}" fill="#fff"/>${rects.join("")}</svg>`;
+}
+
+function makeQr(text) {
+  const version = 5;
+  const size = 17 + version * 4;
+  const dataCodewords = 108;
+  const eccCodewords = 26;
+  const bits = [];
+  appendBits(bits, 4, 4);
+  appendBits(bits, text.length, 8);
+  for (const char of text) appendBits(bits, char.charCodeAt(0), 8);
+  appendBits(bits, 0, Math.min(4, dataCodewords * 8 - bits.length));
+  while (bits.length % 8) bits.push(0);
+  const data = [];
+  for (let index = 0; index < bits.length; index += 8) data.push(bitsToByte(bits.slice(index, index + 8)));
+  for (let pad = 0xec; data.length < dataCodewords; pad = pad === 0xec ? 0x11 : 0xec) data.push(pad);
+  const codewords = data.concat(reedSolomon(data, eccCodewords));
+  const matrix = Array.from({ length: size }, () => Array(size).fill(null));
+  addQrFunctionPatterns(matrix, version);
+  placeQrData(matrix, codewords);
+  let best = null;
+  for (let mask = 0; mask < 8; mask += 1) {
+    const candidate = matrix.map((row) => row.slice());
+    applyQrMask(candidate, mask);
+    addFormatBits(candidate, mask);
+    const penalty = qrPenalty(candidate);
+    if (!best || penalty < best.penalty) best = { matrix: candidate, penalty };
+  }
+  return best.matrix.map((row) => row.map(Boolean));
+}
+
+function appendBits(bits, value, length) {
+  for (let index = length - 1; index >= 0; index -= 1) bits.push((value >>> index) & 1);
+}
+
+function bitsToByte(bits) {
+  return bits.reduce((value, bit) => (value << 1) | bit, 0);
+}
+
+function addQrFunctionPatterns(matrix, version) {
+  const size = matrix.length;
+  addFinder(matrix, 0, 0);
+  addFinder(matrix, size - 7, 0);
+  addFinder(matrix, 0, size - 7);
+  for (let index = 8; index < size - 8; index += 1) {
+    matrix[6][index] = index % 2 === 0;
+    matrix[index][6] = index % 2 === 0;
+  }
+  for (const row of [6, 30]) {
+    for (const col of [6, 30]) {
+      if ((row === 6 && col === 6) || (row === 6 && col === 30) || (row === 30 && col === 6)) continue;
+      addAlignment(matrix, col - 2, row - 2);
+    }
+  }
+  matrix[size - 8][8] = true;
+  for (let index = 0; index < 9; index += 1) {
+    if (index !== 6) {
+      matrix[8][index] = false;
+      matrix[index][8] = false;
+    }
+  }
+  for (let index = size - 8; index < size; index += 1) {
+    matrix[8][index] = false;
+    matrix[index][8] = false;
+  }
+  for (let index = 0; index < 8; index += 1) {
+    matrix[8][size - 1 - index] = false;
+    matrix[size - 1 - index][8] = false;
+  }
+}
+
+function addFinder(matrix, x, y) {
+  for (let row = -1; row <= 7; row += 1) {
+    for (let col = -1; col <= 7; col += 1) {
+      const yy = y + row;
+      const xx = x + col;
+      if (!matrix[yy] || xx < 0 || xx >= matrix.length) continue;
+      const on = row >= 0 && row <= 6 && col >= 0 && col <= 6 && (row === 0 || row === 6 || col === 0 || col === 6 || (row >= 2 && row <= 4 && col >= 2 && col <= 4));
+      matrix[yy][xx] = on;
+    }
+  }
+}
+
+function addAlignment(matrix, x, y) {
+  for (let row = 0; row < 5; row += 1) {
+    for (let col = 0; col < 5; col += 1) {
+      matrix[y + row][x + col] = row === 0 || row === 4 || col === 0 || col === 4 || (row === 2 && col === 2);
+    }
+  }
+}
+
+function placeQrData(matrix, codewords) {
+  const bits = codewords.flatMap((byte) => Array.from({ length: 8 }, (_, index) => (byte >>> (7 - index)) & 1));
+  const size = matrix.length;
+  let bitIndex = 0;
+  let upward = true;
+  for (let col = size - 1; col > 0; col -= 2) {
+    if (col === 6) col -= 1;
+    for (let offset = 0; offset < size; offset += 1) {
+      const row = upward ? size - 1 - offset : offset;
+      for (let c = 0; c < 2; c += 1) {
+        const x = col - c;
+        if (matrix[row][x] !== null) continue;
+        matrix[row][x] = Boolean(bits[bitIndex] || 0);
+        bitIndex += 1;
+      }
+    }
+    upward = !upward;
+  }
+}
+
+function applyQrMask(matrix, mask) {
+  for (let y = 0; y < matrix.length; y += 1) {
+    for (let x = 0; x < matrix.length; x += 1) {
+      if (isFunctionModule(matrix, x, y)) continue;
+      if (qrMask(mask, x, y)) matrix[y][x] = !matrix[y][x];
+    }
+  }
+}
+
+function isFunctionModule(matrix, x, y) {
+  const size = matrix.length;
+  if (x <= 8 && y <= 8) return true;
+  if (x >= size - 8 && y <= 8) return true;
+  if (x <= 8 && y >= size - 8) return true;
+  if (x === 6 || y === 6) return true;
+  if (x >= 28 && x <= 32 && y >= 28 && y <= 32) return true;
+  if (y === 8 && (x <= 8 || x >= size - 8)) return true;
+  if (x === 8 && (y <= 8 || y >= size - 8)) return true;
+  return false;
+}
+
+function qrMask(mask, x, y) {
+  return [
+    (x + y) % 2 === 0,
+    y % 2 === 0,
+    x % 3 === 0,
+    (x + y) % 3 === 0,
+    (Math.floor(y / 2) + Math.floor(x / 3)) % 2 === 0,
+    ((x * y) % 2) + ((x * y) % 3) === 0,
+    (((x * y) % 2) + ((x * y) % 3)) % 2 === 0,
+    (((x + y) % 2) + ((x * y) % 3)) % 2 === 0
+  ][mask];
+}
+
+function addFormatBits(matrix, mask) {
+  const bits = formatBits(mask);
+  const size = matrix.length;
+  const coords1 = [[8, 0], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5], [8, 7], [8, 8], [7, 8], [5, 8], [4, 8], [3, 8], [2, 8], [1, 8], [0, 8]];
+  const coords2 = [[size - 1, 8], [size - 2, 8], [size - 3, 8], [size - 4, 8], [size - 5, 8], [size - 6, 8], [size - 7, 8], [8, size - 8], [8, size - 7], [8, size - 6], [8, size - 5], [8, size - 4], [8, size - 3], [8, size - 2], [8, size - 1]];
+  for (let index = 0; index < 15; index += 1) {
+    const bit = Boolean((bits >>> index) & 1);
+    matrix[coords1[index][1]][coords1[index][0]] = bit;
+    matrix[coords2[index][1]][coords2[index][0]] = bit;
+  }
+}
+
+function formatBits(mask) {
+  let data = (1 << 3) | mask;
+  let value = data << 10;
+  const generator = 0x537;
+  for (let bit = 14; bit >= 10; bit -= 1) {
+    if ((value >>> bit) & 1) value ^= generator << (bit - 10);
+  }
+  return (((data << 10) | value) ^ 0x5412) & 0x7fff;
+}
+
+function reedSolomon(data, degree) {
+  const generator = rsGenerator(degree);
+  const result = Array(degree).fill(0);
+  for (const byte of data) {
+    const factor = byte ^ result.shift();
+    result.push(0);
+    for (let index = 0; index < degree; index += 1) result[index] ^= gfMul(generator[index], factor);
+  }
+  return result;
+}
+
+function rsGenerator(degree) {
+  let poly = [1];
+  for (let index = 0; index < degree; index += 1) {
+    const next = Array(poly.length + 1).fill(0);
+    for (let j = 0; j < poly.length; j += 1) {
+      next[j] ^= gfMul(poly[j], 1);
+      next[j + 1] ^= gfMul(poly[j], gfPow(2, index));
+    }
+    poly = next;
+  }
+  return poly.slice(1);
+}
+
+function gfPow(value, power) {
+  let result = 1;
+  for (let index = 0; index < power; index += 1) result = gfMul(result, value);
+  return result;
+}
+
+function gfMul(a, b) {
+  let result = 0;
+  for (; b > 0; b >>>= 1) {
+    if (b & 1) result ^= a;
+    a <<= 1;
+    if (a & 0x100) a ^= 0x11d;
+  }
+  return result;
+}
+
+function qrPenalty(matrix) {
+  let penalty = 0;
+  const size = matrix.length;
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0, runColor = matrix[y][0], run = 0; x < size; x += 1) {
+      if (matrix[y][x] === runColor) run += 1;
+      else {
+        if (run >= 5) penalty += run - 2;
+        runColor = matrix[y][x];
+        run = 1;
+      }
+      if (x === size - 1 && run >= 5) penalty += run - 2;
+    }
+  }
+  for (let x = 0; x < size; x += 1) {
+    for (let y = 0, runColor = matrix[0][x], run = 0; y < size; y += 1) {
+      if (matrix[y][x] === runColor) run += 1;
+      else {
+        if (run >= 5) penalty += run - 2;
+        runColor = matrix[y][x];
+        run = 1;
+      }
+      if (y === size - 1 && run >= 5) penalty += run - 2;
+    }
+  }
+  for (let y = 0; y < size - 1; y += 1) {
+    for (let x = 0; x < size - 1; x += 1) {
+      const color = matrix[y][x];
+      if (color === matrix[y][x + 1] && color === matrix[y + 1][x] && color === matrix[y + 1][x + 1]) penalty += 3;
+    }
+  }
+  const dark = matrix.flat().filter(Boolean).length;
+  penalty += Math.floor(Math.abs((dark * 100) / (size * size) - 50) / 5) * 10;
+  return penalty;
 }
 
 function formatDate(value) {

@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-title" content="Event POS">
     <title>Event POS</title>
     <link rel="manifest" href="./manifest.webmanifest">
-    <link rel="stylesheet" href="./styles.css?v=12">
+    <link rel="stylesheet" href="./styles.css?v=13">
   </head>
   <body>
     <header class="app-header">
@@ -142,15 +142,22 @@
             ช่องทางจ่ายเงิน
             <select id="paymentMethod">
               <option value="cash">เงินสด</option>
-              <option value="transfer">โอน</option>
+              <option value="transfer" selected>โอน</option>
             </select>
           </label>
+          <div class="promptpay-box" id="promptpayBox">
+            <div class="promptpay-qr" id="promptpayQr"></div>
+            <div>
+              <strong>PromptPay 080-051-7904</strong>
+              <span id="promptpayAmount">฿0</span>
+            </div>
+          </div>
           <div class="form-grid">
             <label>
               ส่วนลดเพิ่ม
               <input id="discountInput" inputmode="decimal" type="number" min="0" step="1" value="0">
             </label>
-            <label>
+            <label id="paidField">
               รับเงิน
               <input id="paidInput" inputmode="decimal" type="number" min="0" step="1" placeholder="0">
             </label>
@@ -160,7 +167,7 @@
             <div><span>โปรโมชัน</span><strong id="promotionDiscount">฿0</strong></div>
             <div><span>ส่วนลดเพิ่ม</span><strong id="manualDiscount">฿0</strong></div>
             <div><span>ยอดสุทธิ</span><strong id="grandTotal">฿0</strong></div>
-            <div><span>เงินทอน</span><strong id="changeDue">฿0</strong></div>
+            <div id="changeDueRow"><span>เงินทอน</span><strong id="changeDue">฿0</strong></div>
           </div>
           <button class="checkout" id="confirmCheckoutBtn" type="button">ยืนยันปิดการขาย</button>
         </div>
@@ -250,6 +257,6 @@
       </article>
     </template>
 
-    <script src="./app.js?v=12" defer></script>
+    <script src="./app.js?v=13" defer></script>
   </body>
 </html>

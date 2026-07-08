@@ -418,6 +418,49 @@ input:focus, select:focus {
   font-size: 22px;
 }
 
+.promptpay-box {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f6faf8;
+}
+
+.promptpay-box[hidden], #paidField[hidden], #changeDueRow[hidden] {
+  display: none;
+}
+
+.promptpay-qr {
+  width: 148px;
+  height: 148px;
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  border-radius: 8px;
+  background: white;
+  border: 1px solid var(--line);
+}
+
+.promptpay-qr svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.promptpay-box strong, .promptpay-box span {
+  display: block;
+}
+
+.promptpay-box span {
+  margin-top: 4px;
+  color: var(--brand);
+  font-size: 24px;
+  font-weight: 850;
+}
+
 .stock-list, .history-list, .top-product-list {
   display: grid;
   gap: 10px;
@@ -866,5 +909,14 @@ dialog::backdrop {
 
   .receipt-item span {
     grid-column: 2;
+  }
+
+  .promptpay-box {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .promptpay-qr {
+    justify-self: center;
   }
 }
