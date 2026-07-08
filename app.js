@@ -8,6 +8,7 @@ const STORAGE_KEY = "event-pos-data-v1";
 const DEFAULT_CATEGORY_ID = "general";
 const MAX_IMAGE_SIDE = 2048;
 const IMAGE_EXPORT_QUALITY = 0.86;
+const DEFAULT_APP_TITLE = "ขายของและตัดสต็อก";
 const PAYMENT_LABELS = {
   cash: "เงินสด",
   transfer: "โอน"
@@ -41,6 +42,7 @@ let activeView = "sell";
 let query = "";
 
 const els = {
+  appTitle: document.querySelector("#appTitle"),
   productGrid: document.querySelector("#productGrid"),
   stockList: document.querySelector("#stockList"),
   historyList: document.querySelector("#historyList"),
@@ -107,6 +109,13 @@ els.searchInput.addEventListener("input", (event) => {
   query = event.target.value.trim().toLowerCase();
   render();
 });
+els.appTitle.addEventListener("blur", saveAppTitle);
+els.appTitle.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    els.appTitle.blur();
+  }
+});
 els.productImage.addEventListener("change", handleImagePick);
 els.historyDateInput.value = dateKey();
 els.historyDateInput.addEventListener("change", () => {
@@ -148,6 +157,8 @@ function loadState() {
   if (raw) {
     try {
       const parsed = JSON.parse(raw);
+      parsed.settings ||= {};
+      parsed.settings.appTitle ||= DEFAULT_APP_TITLE;
       parsed.products = (parsed.products || []).map((product) => ({ image: "", ...product }));
       migrateCategories(parsed);
       parsed.cart ||= [];
@@ -159,6 +170,9 @@ function loadState() {
     }
   }
   return {
+    settings: {
+      appTitle: DEFAULT_APP_TITLE
+    },
     categories: sampleCategories,
     products: sampleProducts,
     cart: [],
@@ -191,11 +205,26 @@ function filteredProducts() {
 }
 
 function render() {
+  renderSettings();
   renderSummary();
   renderProducts();
   renderStock();
   renderHistory();
   renderCart();
+}
+
+function renderSettings() {
+  if (document.activeElement !== els.appTitle) {
+    els.appTitle.textContent = state.settings?.appTitle || DEFAULT_APP_TITLE;
+  }
+}
+
+function saveAppTitle() {
+  const title = els.appTitle.textContent.trim() || DEFAULT_APP_TITLE;
+  state.settings ||= {};
+  state.settings.appTitle = title;
+  els.appTitle.textContent = title;
+  saveState();
 }
 
 function renderSummary() {
@@ -741,6 +770,8 @@ async function importDataZip(event) {
     if (!dataBytes) throw new Error("missing data.json");
     const imported = JSON.parse(new TextDecoder().decode(dataBytes));
     restoreImages(imported, entries);
+    imported.settings ||= {};
+    imported.settings.appTitle ||= DEFAULT_APP_TITLE;
     migrateCategories(imported);
     imported.cart ||= [];
     imported.receipts ||= [];

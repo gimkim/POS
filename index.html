@@ -8,13 +8,13 @@
     <meta name="apple-mobile-web-app-title" content="Event POS">
     <title>Event POS</title>
     <link rel="manifest" href="./manifest.webmanifest">
-    <link rel="stylesheet" href="./styles.css?v=7">
+    <link rel="stylesheet" href="./styles.css?v=8">
   </head>
   <body>
     <header class="app-header">
       <div>
         <p class="eyebrow">Event POS</p>
-        <h1>ขายของและตัดสต็อก</h1>
+        <h1 id="appTitle" contenteditable="true" spellcheck="false" aria-label="แก้ไขหัวข้อร้าน">ขายของและตัดสต็อก</h1>
       </div>
       <div class="header-actions">
         <button class="ghost" id="exportBtn" type="button">ส่งออกข้อมูล</button>
@@ -228,6 +228,6 @@
       </article>
     </template>
 
-    <script src="./app.js?v=7" defer></script>
+    <script src="./app.js?v=8" defer></script>
   </body>
 </html>
