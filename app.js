@@ -29,9 +29,9 @@ const PLACEHOLDER_IMAGE =
   `);
 
 const sampleProducts = [
-  { id: crypto.randomUUID(), name: "เสื้อยืด", sku: "TSHIRT", categoryId: "apparel", price: 350, stock: 24, lowStock: 5, image: "" },
-  { id: crypto.randomUUID(), name: "กระเป๋าผ้า", sku: "TOTE", categoryId: "goods", price: 180, stock: 18, lowStock: 4, image: "" },
-  { id: crypto.randomUUID(), name: "สติกเกอร์", sku: "STICKER", categoryId: "small-item", price: 40, stock: 60, lowStock: 10, image: "" }
+  { id: crypto.randomUUID(), name: "เสื้อยืด", categoryId: "apparel", price: 350, stock: 24, lowStock: 5, image: "" },
+  { id: crypto.randomUUID(), name: "กระเป๋าผ้า", categoryId: "goods", price: 180, stock: 18, lowStock: 4, image: "" },
+  { id: crypto.randomUUID(), name: "สติกเกอร์", categoryId: "small-item", price: 40, stock: 60, lowStock: 10, image: "" }
 ];
 const sampleCategories = [
   { id: DEFAULT_CATEGORY_ID, name: "ทั่วไป" },
@@ -62,6 +62,8 @@ const els = {
   cartItems: document.querySelector("#cartItems"),
   emptyCart: document.querySelector("#emptyCart"),
   subtotal: document.querySelector("#subtotal"),
+  promotionDiscount: document.querySelector("#promotionDiscount"),
+  manualDiscount: document.querySelector("#manualDiscount"),
   grandTotal: document.querySelector("#grandTotal"),
   changeDue: document.querySelector("#changeDue"),
   billNumber: document.querySelector("#billNumber"),
@@ -84,6 +86,8 @@ const els = {
   receiptMeta: document.querySelector("#receiptMeta"),
   receiptItems: document.querySelector("#receiptItems"),
   receiptSubtotal: document.querySelector("#receiptSubtotal"),
+  receiptPromotionDiscount: document.querySelector("#receiptPromotionDiscount"),
+  receiptManualDiscount: document.querySelector("#receiptManualDiscount"),
   receiptDiscount: document.querySelector("#receiptDiscount"),
   receiptTotal: document.querySelector("#receiptTotal"),
   receiptPaid: document.querySelector("#receiptPaid"),
@@ -298,7 +302,7 @@ function switchView(name) {
 function filteredProducts() {
   if (!query) return [...state.products];
   return state.products.filter((product) => {
-    return [product.name, product.sku, categoryName(product.categoryId)]
+    return [product.name, categoryName(product.categoryId)]
       .join(" ")
       .toLowerCase()
       .includes(query);
@@ -371,7 +375,6 @@ function createProductCard(product) {
   photo.alt = product.name;
   card.querySelector(".category").textContent = categoryName(product.categoryId);
   card.querySelector("h3").textContent = product.name;
-  card.querySelector(".sku").textContent = product.sku || "ไม่มีรหัส";
   card.querySelector(".price").textContent = money.format(product.price);
   const stock = card.querySelector(".stock");
   stock.textContent = `เหลือ ${product.stock}`;
@@ -392,7 +395,7 @@ function renderStock() {
         <img class="stock-photo" src="${productImage(product)}" alt="${escapeHtml(product.name)}">
         <div>
           <h3>${escapeHtml(product.name)}</h3>
-          <p class="history-meta">${escapeHtml(product.sku || "ไม่มีรหัส")} · ${escapeHtml(categoryName(product.categoryId))} · ${money.format(product.price)}</p>
+          <p class="history-meta">${escapeHtml(categoryName(product.categoryId))} · ${money.format(product.price)}</p>
         </div>
       </div>
       <div class="stock-actions">
@@ -461,7 +464,7 @@ function summarizeTopProducts(receipts) {
   const byProduct = new Map();
   for (const receipt of receipts) {
     for (const item of receipt.items) {
-      const key = item.productId || item.sku || item.name;
+      const key = item.productId || item.name;
       const current = byProduct.get(key) || { name: item.name, qty: 0, total: 0 };
       current.qty += item.qty;
       current.total += item.total;
@@ -512,10 +515,14 @@ function renderCart() {
   }
 
   const subtotal = getSubtotal();
-  const discount = getDiscount();
+  const promotionDiscount = getPromotionDiscount();
+  const manualDiscount = getManualDiscount();
+  const discount = promotionDiscount + manualDiscount;
   const total = Math.max(0, subtotal - discount);
   const paid = Number(els.paidInput.value || 0);
   els.subtotal.textContent = money.format(subtotal);
+  els.promotionDiscount.textContent = discountText(promotionDiscount);
+  els.manualDiscount.textContent = discountText(manualDiscount);
   els.grandTotal.textContent = money.format(total);
   els.changeDue.textContent = money.format(Math.max(0, paid - total));
 }
@@ -539,8 +546,45 @@ function getSubtotal() {
   }, 0);
 }
 
-function getDiscount() {
+function getManualDiscount() {
   return Math.max(0, Number(els.discountInput.value || 0));
+}
+
+function getPromotionDiscount() {
+  return calculatePromotions(state.cart).total;
+}
+
+function calculatePromotions(cart) {
+  const byCategory = new Map();
+  for (const line of cart) {
+    const product = findProduct(line.productId);
+    if (!product) continue;
+    const categoryId = product.categoryId || DEFAULT_CATEGORY_ID;
+    const current = byCategory.get(categoryId) || { categoryId, qty: 0, discount: 0 };
+    current.qty += line.qty;
+    byCategory.set(categoryId, current);
+  }
+
+  const applied = [];
+  let total = 0;
+  for (const item of byCategory.values()) {
+    const category = state.categories.find((entry) => entry.id === item.categoryId);
+    const qty = Math.max(0, Math.floor(Number(category?.promoQty || 0)));
+    const discount = Math.max(0, Number(category?.promoDiscount || 0));
+    if (!qty || !discount || item.qty < qty) continue;
+    const sets = Math.floor(item.qty / qty);
+    const amount = sets * discount;
+    total += amount;
+    applied.push({
+      categoryId: item.categoryId,
+      categoryName: category?.name || "ทั่วไป",
+      qty,
+      sets,
+      discount,
+      amount
+    });
+  }
+  return { total, applied };
 }
 
 function checkout() {
@@ -550,7 +594,8 @@ function checkout() {
     return {
       productId: line.productId,
       name: product.name,
-      sku: product.sku,
+      categoryId: product.categoryId || DEFAULT_CATEGORY_ID,
+      categoryName: categoryName(product.categoryId),
       imageKey: product.imageKey || "",
       price: product.price,
       qty: line.qty,
@@ -562,7 +607,10 @@ function checkout() {
     product.stock = Math.max(0, product.stock - item.qty);
   }
   const subtotal = getSubtotal();
-  const discount = getDiscount();
+  const promotions = calculatePromotions(state.cart);
+  const promotionDiscount = promotions.total;
+  const manualDiscount = getManualDiscount();
+  const discount = promotionDiscount + manualDiscount;
   const total = Math.max(0, subtotal - discount);
   state.receipts.push({
     billNo: state.nextBill,
@@ -571,6 +619,9 @@ function checkout() {
     paymentMethod: els.paymentMethod.value,
     items,
     subtotal,
+    promotionDiscount,
+    manualDiscount,
+    promotions: promotions.applied,
     discount,
     total,
     paid: Number(els.paidInput.value || 0)
@@ -609,7 +660,6 @@ function openProductDialog(product = null) {
   els.deleteProductBtn.hidden = !product;
   document.querySelector("#productId").value = product?.id || "";
   document.querySelector("#productName").value = product?.name || "";
-  document.querySelector("#productSku").value = product?.sku || "";
   document.querySelector("#productCategory").value = product?.categoryId || DEFAULT_CATEGORY_ID;
   document.querySelector("#productPrice").value = product?.price ?? "";
   document.querySelector("#productStock").value = product?.stock ?? "";
@@ -636,7 +686,6 @@ async function saveProductFromForm() {
   const product = {
     id: id || crypto.randomUUID(),
     name: document.querySelector("#productName").value.trim(),
-    sku: document.querySelector("#productSku").value.trim(),
     categoryId: document.querySelector("#productCategory").value || DEFAULT_CATEGORY_ID,
     imageKey,
     price: Math.max(0, Number(document.querySelector("#productPrice").value || 0)),
@@ -666,7 +715,7 @@ function addCategory() {
     alert("มีหมวดหมู่นี้อยู่แล้ว");
     return;
   }
-  state.categories.push({ id: uniqueCategoryId(name), name });
+  state.categories.push({ id: uniqueCategoryId(name), name, promoQty: 0, promoDiscount: 0 });
   els.categoryNameInput.value = "";
   saveState();
   renderCategories();
@@ -691,7 +740,7 @@ function deleteCategory(id) {
 
 function renderCategories() {
   els.categoryList.textContent = "";
-  for (const category of state.categories) {
+  state.categories.forEach((category, index) => {
     const count = state.products.filter((product) => product.categoryId === category.id).length;
     const row = document.createElement("div");
     row.className = "category-row";
@@ -699,12 +748,43 @@ function renderCategories() {
       <div>
         <strong>${escapeHtml(category.name)}</strong>
         <small>${count} รายการ</small>
+        <div class="category-promo">
+          <label>ครบ <input class="promo-qty" type="number" min="0" step="1" inputmode="numeric" value="${Math.max(0, Number(category.promoQty || 0))}"> ชิ้น</label>
+          <label>ลด <input class="promo-discount" type="number" min="0" step="1" inputmode="decimal" value="${Math.max(0, Number(category.promoDiscount || 0))}"> บาท</label>
+        </div>
       </div>
-      <button class="ghost danger" type="button" ${category.id === DEFAULT_CATEGORY_ID ? "disabled" : ""}>ลบ</button>
+      <div class="category-actions">
+        <button class="ghost compact move-up" type="button" ${index === 0 ? "disabled" : ""}>ขึ้น</button>
+        <button class="ghost compact move-down" type="button" ${index === state.categories.length - 1 ? "disabled" : ""}>ลง</button>
+        <button class="ghost danger compact delete-category" type="button" ${category.id === DEFAULT_CATEGORY_ID ? "disabled" : ""}>ลบ</button>
+      </div>
     `;
-    row.querySelector("button").addEventListener("click", () => deleteCategory(category.id));
+    row.querySelector(".promo-qty").addEventListener("change", (event) => updateCategoryPromotion(category.id, "promoQty", event.target.value));
+    row.querySelector(".promo-discount").addEventListener("change", (event) => updateCategoryPromotion(category.id, "promoDiscount", event.target.value));
+    row.querySelector(".move-up").addEventListener("click", () => moveCategory(index, -1));
+    row.querySelector(".move-down").addEventListener("click", () => moveCategory(index, 1));
+    row.querySelector(".delete-category").addEventListener("click", () => deleteCategory(category.id));
     els.categoryList.append(row);
-  }
+  });
+}
+
+function updateCategoryPromotion(id, field, value) {
+  const category = state.categories.find((item) => item.id === id);
+  if (!category) return;
+  category[field] = Math.max(0, Math.floor(Number(value || 0)));
+  saveState();
+  renderCategories();
+  renderCart();
+}
+
+function moveCategory(index, direction) {
+  const nextIndex = index + direction;
+  if (nextIndex < 0 || nextIndex >= state.categories.length) return;
+  const [category] = state.categories.splice(index, 1);
+  state.categories.splice(nextIndex, 0, category);
+  saveState();
+  renderCategories();
+  renderProducts();
 }
 
 function renderCategoryOptions(selectedId = "") {
@@ -812,7 +892,7 @@ function showReceipt(receipt) {
       <img src="${receiptItemImage(item)}" alt="${escapeHtml(item.name)}">
       <div>
         <strong>${escapeHtml(item.name)}</strong>
-        <small>${escapeHtml(item.sku || "ไม่มีรหัส")} · ${money.format(item.price)} x ${item.qty}</small>
+        <small>${escapeHtml(item.categoryName || categoryName(item.categoryId))} · ${money.format(item.price)} x ${item.qty}</small>
       </div>
       <span>${money.format(item.total)}</span>
     `;
@@ -820,6 +900,8 @@ function showReceipt(receipt) {
   }
   const paid = Number(receipt.paid || 0);
   els.receiptSubtotal.textContent = money.format(receipt.subtotal || receipt.total);
+  els.receiptPromotionDiscount.textContent = discountText(receipt.promotionDiscount || 0);
+  els.receiptManualDiscount.textContent = discountText(receipt.manualDiscount ?? Math.max(0, (receipt.discount || 0) - (receipt.promotionDiscount || 0)));
   els.receiptDiscount.textContent = money.format(receipt.discount || 0);
   els.receiptTotal.textContent = money.format(receipt.total);
   els.receiptPaid.textContent = money.format(paid);
@@ -858,7 +940,7 @@ async function buildPortableExport() {
 
   for (const receipt of data.receipts || []) {
     for (const item of receipt.items || []) {
-      item.imageFile = await addImageFile(await exportableImage(item), `receipt-${receipt.billNo || "bill"}-${item.productId || item.sku || item.name}`, imageFiles, seenImages);
+      item.imageFile = await addImageFile(await exportableImage(item), `receipt-${receipt.billNo || "bill"}-${item.productId || item.name}`, imageFiles, seenImages);
       delete item.image;
       delete item.imageKey;
     }
@@ -983,7 +1065,11 @@ function migrateCategories(data) {
   }
 
   if (!categories.has(DEFAULT_CATEGORY_ID)) categories.set(DEFAULT_CATEGORY_ID, { id: DEFAULT_CATEGORY_ID, name: "ทั่วไป" });
-  data.categories = [...categories.values()];
+  data.categories = [...categories.values()].map((category) => ({
+    ...category,
+    promoQty: Math.max(0, Math.floor(Number(category.promoQty || 0))),
+    promoDiscount: Math.max(0, Math.floor(Number(category.promoDiscount || 0)))
+  }));
 }
 
 function uniqueCategoryId(name, existingCategories = null) {
@@ -1016,6 +1102,10 @@ function receiptItemImage(item) {
 
 function paymentLabel(value) {
   return PAYMENT_LABELS[value] || PAYMENT_LABELS.cash;
+}
+
+function discountText(value) {
+  return value > 0 ? `-${money.format(value)}` : money.format(0);
 }
 
 function formatDate(value) {
