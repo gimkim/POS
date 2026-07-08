@@ -5,6 +5,9 @@ const money = new Intl.NumberFormat("th-TH", {
 });
 
 const STORAGE_KEY = "event-pos-data-v1";
+const IMAGE_DB_NAME = "event-pos-images";
+const IMAGE_DB_VERSION = 1;
+const IMAGE_STORE_NAME = "images";
 const DEFAULT_CATEGORY_ID = "general";
 const MAX_IMAGE_SIDE = 2048;
 const IMAGE_EXPORT_QUALITY = 0.86;
@@ -40,6 +43,8 @@ const sampleCategories = [
 const state = loadState();
 let activeView = "sell";
 let query = "";
+let imageDbPromise = null;
+const imageCache = new Map();
 
 const els = {
   appTitle: document.querySelector("#appTitle"),
@@ -88,6 +93,7 @@ const els = {
   deleteProductBtn: document.querySelector("#deleteProductBtn"),
   productImage: document.querySelector("#productImage"),
   productImageData: document.querySelector("#productImageData"),
+  productImageKeyData: document.querySelector("#productImageKeyData"),
   productImagePreview: document.querySelector("#productImagePreview")
 };
 
@@ -96,7 +102,10 @@ document.querySelector("#categoryBtn").addEventListener("click", openCategoryDia
 document.querySelector("#closeDialogBtn").addEventListener("click", () => els.productDialog.close());
 document.querySelector("#closeCategoryBtn").addEventListener("click", () => els.categoryDialog.close());
 document.querySelector("#closeReceiptBtn").addEventListener("click", () => els.receiptDialog.close());
-document.querySelector("#clearImageBtn").addEventListener("click", () => setImageField(""));
+document.querySelector("#clearImageBtn").addEventListener("click", () => {
+  els.productImageKeyData.value = "";
+  setImageField("");
+});
 document.querySelector("#clearCartBtn").addEventListener("click", clearCart);
 document.querySelector("#checkoutBtn").addEventListener("click", checkout);
 document.querySelector("#exportBtn").addEventListener("click", exportData);
@@ -151,6 +160,7 @@ if ("serviceWorker" in navigator) {
 }
 
 render();
+initializeImageStorage();
 
 function loadState() {
   const raw = localStorage.getItem(STORAGE_KEY);
@@ -183,6 +193,97 @@ function loadState() {
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+async function initializeImageStorage() {
+  try {
+    const migrated = await migrateInlineImagesToIndexedDb();
+    await hydrateImages();
+    if (migrated) saveState();
+    render();
+  } catch (error) {
+    console.error("Image storage initialization failed", error);
+  }
+}
+
+function openImageDb() {
+  if (imageDbPromise) return imageDbPromise;
+  imageDbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(IMAGE_DB_NAME, IMAGE_DB_VERSION);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(IMAGE_STORE_NAME);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  return imageDbPromise;
+}
+
+async function putStoredImage(dataUrl) {
+  if (!dataUrl || !dataUrl.startsWith("data:image/")) return "";
+  const key = `img-${Date.now()}-${crypto.randomUUID()}`;
+  const db = await openImageDb();
+  await imageStoreRequest(db, "readwrite", (store) => store.put(dataUrl, key));
+  imageCache.set(key, dataUrl);
+  return key;
+}
+
+async function getStoredImage(key) {
+  if (!key) return "";
+  if (imageCache.has(key)) return imageCache.get(key);
+  const db = await openImageDb();
+  const dataUrl = await imageStoreRequest(db, "readonly", (store) => store.get(key));
+  if (dataUrl) imageCache.set(key, dataUrl);
+  return dataUrl || "";
+}
+
+function imageStoreRequest(db, mode, action) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(IMAGE_STORE_NAME, mode);
+    const request = action(transaction.objectStore(IMAGE_STORE_NAME));
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
+async function migrateInlineImagesToIndexedDb() {
+  let migrated = false;
+  for (const product of state.products || []) {
+    if (product.image?.startsWith("data:image/")) {
+      product.imageKey = await putStoredImage(product.image);
+      delete product.image;
+      migrated = true;
+    }
+  }
+  for (const receipt of state.receipts || []) {
+    for (const item of receipt.items || []) {
+      if (item.image?.startsWith("data:image/")) {
+        item.imageKey = await putStoredImage(item.image);
+        delete item.image;
+        migrated = true;
+      }
+    }
+  }
+  return migrated;
+}
+
+async function hydrateImages() {
+  const refs = imageKeyRefs();
+  await Promise.all([...refs].map((key) => getStoredImage(key)));
+}
+
+function imageKeyRefs() {
+  const refs = new Set();
+  for (const product of state.products || []) {
+    if (product.imageKey) refs.add(product.imageKey);
+  }
+  for (const receipt of state.receipts || []) {
+    for (const item of receipt.items || []) {
+      if (item.imageKey) refs.add(item.imageKey);
+    }
+  }
+  return refs;
 }
 
 function switchView(name) {
@@ -450,7 +551,7 @@ function checkout() {
       productId: line.productId,
       name: product.name,
       sku: product.sku,
-      image: product.image || "",
+      imageKey: product.imageKey || "",
       price: product.price,
       qty: line.qty,
       total: product.price * line.qty
@@ -513,19 +614,31 @@ function openProductDialog(product = null) {
   document.querySelector("#productPrice").value = product?.price ?? "";
   document.querySelector("#productStock").value = product?.stock ?? "";
   document.querySelector("#productLowStock").value = product?.lowStock ?? 3;
-  setImageField(product?.image || "");
+  els.productImageData.value = product?.imageKey ? "" : product?.image || "";
+  els.productImageKeyData.value = product?.imageKey || "";
+  setImagePreview(productImage(product));
   els.productImage.value = "";
   els.productDialog.showModal();
 }
 
-function saveProductFromForm() {
+async function saveProductFromForm() {
   const id = document.querySelector("#productId").value;
+  let imageKey = els.productImageKeyData.value;
+  if (els.productImageData.value) {
+    try {
+      imageKey = await putStoredImage(els.productImageData.value);
+    } catch (error) {
+      console.error("Product image save failed", error);
+      alert("บันทึกรูปไม่สำเร็จ กรุณาลองเลือกรูปใหม่อีกครั้ง");
+      return;
+    }
+  }
   const product = {
     id: id || crypto.randomUUID(),
     name: document.querySelector("#productName").value.trim(),
     sku: document.querySelector("#productSku").value.trim(),
     categoryId: document.querySelector("#productCategory").value || DEFAULT_CATEGORY_ID,
-    image: els.productImageData.value,
+    imageKey,
     price: Math.max(0, Number(document.querySelector("#productPrice").value || 0)),
     stock: Math.max(0, Math.floor(Number(document.querySelector("#productStock").value || 0))),
     lowStock: Math.max(0, Math.floor(Number(document.querySelector("#productLowStock").value || 0)))
@@ -624,6 +737,10 @@ async function handleImagePick(event) {
 
 function setImageField(value) {
   els.productImageData.value = value;
+  setImagePreview(value || PLACEHOLDER_IMAGE);
+}
+
+function setImagePreview(value) {
   els.productImagePreview.src = value || PLACEHOLDER_IMAGE;
 }
 
@@ -692,7 +809,7 @@ function showReceipt(receipt) {
     const row = document.createElement("div");
     row.className = "receipt-item";
     row.innerHTML = `
-      <img src="${item.image || PLACEHOLDER_IMAGE}" alt="${escapeHtml(item.name)}">
+      <img src="${receiptItemImage(item)}" alt="${escapeHtml(item.name)}">
       <div>
         <strong>${escapeHtml(item.name)}</strong>
         <small>${escapeHtml(item.sku || "ไม่มีรหัส")} · ${money.format(item.price)} x ${item.qty}</small>
@@ -734,18 +851,24 @@ async function buildPortableExport() {
   const seenImages = new Map();
 
   for (const product of data.products || []) {
-    product.imageFile = await addImageFile(product.image, `product-${product.id || crypto.randomUUID()}`, imageFiles, seenImages);
+    product.imageFile = await addImageFile(await exportableImage(product), `product-${product.id || crypto.randomUUID()}`, imageFiles, seenImages);
     delete product.image;
+    delete product.imageKey;
   }
 
   for (const receipt of data.receipts || []) {
     for (const item of receipt.items || []) {
-      item.imageFile = await addImageFile(item.image, `receipt-${receipt.billNo || "bill"}-${item.productId || item.sku || item.name}`, imageFiles, seenImages);
+      item.imageFile = await addImageFile(await exportableImage(item), `receipt-${receipt.billNo || "bill"}-${item.productId || item.sku || item.name}`, imageFiles, seenImages);
       delete item.image;
+      delete item.imageKey;
     }
   }
 
   return { data, imageFiles };
+}
+
+async function exportableImage(record) {
+  return record.image || (record.imageKey ? await getStoredImage(record.imageKey) : "");
 }
 
 async function addImageFile(dataUrl, fallbackName, imageFiles, seenImages) {
@@ -769,7 +892,6 @@ async function importDataZip(event) {
     const dataBytes = entries.get("data.json");
     if (!dataBytes) throw new Error("missing data.json");
     const imported = JSON.parse(new TextDecoder().decode(dataBytes));
-    restoreImages(imported, entries);
     imported.settings ||= {};
     imported.settings.appTitle ||= DEFAULT_APP_TITLE;
     migrateCategories(imported);
@@ -779,8 +901,10 @@ async function importDataZip(event) {
     if (!Array.isArray(imported.products)) imported.products = [];
     if (!Array.isArray(imported.categories)) imported.categories = [{ id: DEFAULT_CATEGORY_ID, name: "ทั่วไป" }];
     if (!confirm("นำเข้าข้อมูลจาก ZIP นี้ไหม? ข้อมูลในเครื่องนี้จะถูกแทนที่ทั้งหมด")) return;
+    await restoreImages(imported, entries);
     for (const key of Object.keys(state)) delete state[key];
     Object.assign(state, imported);
+    await hydrateImages();
     saveState();
     render();
     alert("นำเข้าข้อมูลเรียบร้อยแล้ว");
@@ -789,14 +913,18 @@ async function importDataZip(event) {
   }
 }
 
-function restoreImages(data, entries) {
+async function restoreImages(data, entries) {
   for (const product of data.products || []) {
-    product.image = imageFileToDataUrl(product.imageFile, entries) || product.image || "";
+    const image = imageFileToDataUrl(product.imageFile, entries) || product.image || "";
+    product.imageKey = image ? await putStoredImage(image) : product.imageKey || "";
+    delete product.image;
     delete product.imageFile;
   }
   for (const receipt of data.receipts || []) {
     for (const item of receipt.items || []) {
-      item.image = imageFileToDataUrl(item.imageFile, entries) || item.image || "";
+      const image = imageFileToDataUrl(item.imageFile, entries) || item.image || "";
+      item.imageKey = image ? await putStoredImage(image) : item.imageKey || "";
+      delete item.image;
       delete item.imageFile;
     }
   }
@@ -879,7 +1007,11 @@ function slugify(value) {
 }
 
 function productImage(product) {
-  return product?.image || PLACEHOLDER_IMAGE;
+  return imageCache.get(product?.imageKey) || product?.image || PLACEHOLDER_IMAGE;
+}
+
+function receiptItemImage(item) {
+  return imageCache.get(item?.imageKey) || item?.image || PLACEHOLDER_IMAGE;
 }
 
 function paymentLabel(value) {
