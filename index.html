@@ -18,6 +18,7 @@
       </div>
       <div class="header-actions">
         <button class="ghost" id="exportBtn" type="button">ส่งออกข้อมูล</button>
+        <button class="ghost" id="categoryBtn" type="button">จัดการหมวดหมู่</button>
         <button class="primary" id="newProductBtn" type="button">เพิ่มสินค้า</button>
       </div>
     </header>
@@ -135,7 +136,7 @@
         <button class="ghost compact" id="clearImageBtn" type="button">ใช้รูป placeholder</button>
         <label>ชื่อสินค้า<input id="productName" required autocomplete="off"></label>
         <label>SKU / รหัส<input id="productSku" autocomplete="off"></label>
-        <label>หมวดหมู่<input id="productCategory" autocomplete="off"></label>
+        <label>หมวดหมู่<select id="productCategory" required></select></label>
         <div class="form-grid">
           <label>ราคา<input id="productPrice" required type="number" min="0" step="1" inputmode="decimal"></label>
           <label>สต็อก<input id="productStock" required type="number" min="0" step="1" inputmode="numeric"></label>
@@ -144,6 +145,20 @@
         <div class="dialog-actions">
           <button class="ghost danger" id="deleteProductBtn" type="button" hidden>ลบสินค้า</button>
           <button class="primary" value="default" type="submit">บันทึก</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="categoryDialog">
+      <form method="dialog" class="dialog-card" id="categoryForm">
+        <div class="dialog-head">
+          <h2>จัดการหมวดหมู่</h2>
+          <button class="icon-btn" id="closeCategoryBtn" type="button" aria-label="ปิด">×</button>
+        </div>
+        <div class="category-list" id="categoryList"></div>
+        <div class="category-add">
+          <label>หมวดหมู่ใหม่<input id="categoryNameInput" autocomplete="off" placeholder="เช่น เสื้อ, อาหาร, ของที่ระลึก"></label>
+          <button class="primary" id="addCategoryBtn" type="submit">เพิ่มหมวดหมู่</button>
         </div>
       </form>
     </dialog>

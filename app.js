@@ -5,6 +5,7 @@ const money = new Intl.NumberFormat("th-TH", {
 });
 
 const STORAGE_KEY = "event-pos-data-v1";
+const DEFAULT_CATEGORY_ID = "general";
 const PAYMENT_LABELS = {
   cash: "เงินสด",
   transfer: "โอน"
@@ -22,9 +23,15 @@ const PLACEHOLDER_IMAGE =
   `);
 
 const sampleProducts = [
-  { id: crypto.randomUUID(), name: "เสื้อยืด", sku: "TSHIRT", category: "Apparel", price: 350, stock: 24, lowStock: 5, image: "" },
-  { id: crypto.randomUUID(), name: "กระเป๋าผ้า", sku: "TOTE", category: "Goods", price: 180, stock: 18, lowStock: 4, image: "" },
-  { id: crypto.randomUUID(), name: "สติกเกอร์", sku: "STICKER", category: "Small item", price: 40, stock: 60, lowStock: 10, image: "" }
+  { id: crypto.randomUUID(), name: "เสื้อยืด", sku: "TSHIRT", categoryId: "apparel", price: 350, stock: 24, lowStock: 5, image: "" },
+  { id: crypto.randomUUID(), name: "กระเป๋าผ้า", sku: "TOTE", categoryId: "goods", price: 180, stock: 18, lowStock: 4, image: "" },
+  { id: crypto.randomUUID(), name: "สติกเกอร์", sku: "STICKER", categoryId: "small-item", price: 40, stock: 60, lowStock: 10, image: "" }
+];
+const sampleCategories = [
+  { id: DEFAULT_CATEGORY_ID, name: "ทั่วไป" },
+  { id: "apparel", name: "Apparel" },
+  { id: "goods", name: "Goods" },
+  { id: "small-item", name: "Small item" }
 ];
 
 const state = loadState();
@@ -53,6 +60,10 @@ const els = {
   lowStockCount: document.querySelector("#lowStockCount"),
   productDialog: document.querySelector("#productDialog"),
   productForm: document.querySelector("#productForm"),
+  categoryDialog: document.querySelector("#categoryDialog"),
+  categoryForm: document.querySelector("#categoryForm"),
+  categoryList: document.querySelector("#categoryList"),
+  categoryNameInput: document.querySelector("#categoryNameInput"),
   dialogTitle: document.querySelector("#dialogTitle"),
   deleteProductBtn: document.querySelector("#deleteProductBtn"),
   productImage: document.querySelector("#productImage"),
@@ -61,7 +72,9 @@ const els = {
 };
 
 document.querySelector("#newProductBtn").addEventListener("click", () => openProductDialog());
+document.querySelector("#categoryBtn").addEventListener("click", openCategoryDialog);
 document.querySelector("#closeDialogBtn").addEventListener("click", () => els.productDialog.close());
+document.querySelector("#closeCategoryBtn").addEventListener("click", () => els.categoryDialog.close());
 document.querySelector("#clearImageBtn").addEventListener("click", () => setImageField(""));
 document.querySelector("#clearCartBtn").addEventListener("click", clearCart);
 document.querySelector("#checkoutBtn").addEventListener("click", checkout);
@@ -74,6 +87,10 @@ els.searchInput.addEventListener("input", (event) => {
   render();
 });
 els.productImage.addEventListener("change", handleImagePick);
+els.categoryForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  addCategory();
+});
 
 for (const name of ["sell", "stock", "history"]) {
   document.querySelector(`#${name}Tab`).addEventListener("click", () => switchView(name));
@@ -107,6 +124,7 @@ function loadState() {
     try {
       const parsed = JSON.parse(raw);
       parsed.products = (parsed.products || []).map((product) => ({ image: "", ...product }));
+      migrateCategories(parsed);
       parsed.cart ||= [];
       parsed.receipts ||= [];
       parsed.nextBill ||= 1;
@@ -116,6 +134,7 @@ function loadState() {
     }
   }
   return {
+    categories: sampleCategories,
     products: sampleProducts,
     cart: [],
     receipts: [],
@@ -139,7 +158,7 @@ function switchView(name) {
 function filteredProducts() {
   if (!query) return [...state.products];
   return state.products.filter((product) => {
-    return [product.name, product.sku, product.category]
+    return [product.name, product.sku, categoryName(product.categoryId)]
       .join(" ")
       .toLowerCase()
       .includes(query);
@@ -176,7 +195,7 @@ function renderProducts() {
     const photo = card.querySelector(".product-photo");
     photo.src = productImage(product);
     photo.alt = product.name;
-    card.querySelector(".category").textContent = product.category || "ทั่วไป";
+    card.querySelector(".category").textContent = categoryName(product.categoryId);
     card.querySelector("h3").textContent = product.name;
     card.querySelector(".sku").textContent = product.sku || "ไม่มีรหัส";
     card.querySelector(".price").textContent = money.format(product.price);
@@ -200,7 +219,7 @@ function renderStock() {
         <img class="stock-photo" src="${productImage(product)}" alt="${escapeHtml(product.name)}">
         <div>
           <h3>${escapeHtml(product.name)}</h3>
-          <p class="history-meta">${escapeHtml(product.sku || "ไม่มีรหัส")} · ${escapeHtml(product.category || "ทั่วไป")} · ${money.format(product.price)}</p>
+          <p class="history-meta">${escapeHtml(product.sku || "ไม่มีรหัส")} · ${escapeHtml(categoryName(product.categoryId))} · ${money.format(product.price)}</p>
         </div>
       </div>
       <div class="stock-actions">
@@ -371,12 +390,13 @@ function updateStock(id, stock) {
 }
 
 function openProductDialog(product = null) {
+  renderCategoryOptions(product?.categoryId || "");
   els.dialogTitle.textContent = product ? "แก้ไขสินค้า" : "เพิ่มสินค้า";
   els.deleteProductBtn.hidden = !product;
   document.querySelector("#productId").value = product?.id || "";
   document.querySelector("#productName").value = product?.name || "";
   document.querySelector("#productSku").value = product?.sku || "";
-  document.querySelector("#productCategory").value = product?.category || "";
+  document.querySelector("#productCategory").value = product?.categoryId || DEFAULT_CATEGORY_ID;
   document.querySelector("#productPrice").value = product?.price ?? "";
   document.querySelector("#productStock").value = product?.stock ?? "";
   document.querySelector("#productLowStock").value = product?.lowStock ?? 3;
@@ -391,7 +411,7 @@ function saveProductFromForm() {
     id: id || crypto.randomUUID(),
     name: document.querySelector("#productName").value.trim(),
     sku: document.querySelector("#productSku").value.trim(),
-    category: document.querySelector("#productCategory").value.trim(),
+    categoryId: document.querySelector("#productCategory").value || DEFAULT_CATEGORY_ID,
     image: els.productImageData.value,
     price: Math.max(0, Number(document.querySelector("#productPrice").value || 0)),
     stock: Math.max(0, Math.floor(Number(document.querySelector("#productStock").value || 0))),
@@ -404,6 +424,73 @@ function saveProductFromForm() {
   saveState();
   els.productDialog.close();
   render();
+}
+
+function openCategoryDialog() {
+  renderCategories();
+  els.categoryNameInput.value = "";
+  els.categoryDialog.showModal();
+}
+
+function addCategory() {
+  const name = els.categoryNameInput.value.trim();
+  if (!name) return;
+  const exists = state.categories.some((category) => category.name.toLowerCase() === name.toLowerCase());
+  if (exists) {
+    alert("มีหมวดหมู่นี้อยู่แล้ว");
+    return;
+  }
+  state.categories.push({ id: uniqueCategoryId(name), name });
+  els.categoryNameInput.value = "";
+  saveState();
+  renderCategories();
+  render();
+}
+
+function deleteCategory(id) {
+  if (id === DEFAULT_CATEGORY_ID) return;
+  const category = state.categories.find((item) => item.id === id);
+  if (!category) return;
+  const used = state.products.some((product) => product.categoryId === id);
+  if (used) {
+    alert("หมวดหมู่นี้มีสินค้าอยู่ ให้ย้ายสินค้าไปหมวดอื่นก่อนลบ");
+    return;
+  }
+  if (!confirm(`ลบหมวดหมู่ “${category.name}” ใช่ไหม?`)) return;
+  state.categories = state.categories.filter((item) => item.id !== id);
+  saveState();
+  renderCategories();
+  render();
+}
+
+function renderCategories() {
+  els.categoryList.textContent = "";
+  for (const category of state.categories) {
+    const count = state.products.filter((product) => product.categoryId === category.id).length;
+    const row = document.createElement("div");
+    row.className = "category-row";
+    row.innerHTML = `
+      <div>
+        <strong>${escapeHtml(category.name)}</strong>
+        <small>${count} รายการ</small>
+      </div>
+      <button class="ghost danger" type="button" ${category.id === DEFAULT_CATEGORY_ID ? "disabled" : ""}>ลบ</button>
+    `;
+    row.querySelector("button").addEventListener("click", () => deleteCategory(category.id));
+    els.categoryList.append(row);
+  }
+}
+
+function renderCategoryOptions(selectedId = "") {
+  const select = document.querySelector("#productCategory");
+  select.textContent = "";
+  for (const category of state.categories) {
+    const option = document.createElement("option");
+    option.value = category.id;
+    option.textContent = category.name;
+    select.append(option);
+  }
+  select.value = state.categories.some((category) => category.id === selectedId) ? selectedId : DEFAULT_CATEGORY_ID;
 }
 
 function handleImagePick(event) {
@@ -451,6 +538,60 @@ function exportData() {
 
 function findProduct(id) {
   return state.products.find((product) => product.id === id);
+}
+
+function categoryName(id) {
+  return state.categories.find((category) => category.id === id)?.name || "ทั่วไป";
+}
+
+function migrateCategories(data) {
+  const categories = new Map();
+  const hasSavedCategories = Array.isArray(data.categories);
+  if (hasSavedCategories) {
+    for (const category of data.categories) {
+      if (category?.id && category?.name) categories.set(category.id, category);
+    }
+  }
+
+  for (const product of data.products || []) {
+    if (product.categoryId && categories.has(product.categoryId)) continue;
+    if (product.categoryId && !hasSavedCategories) {
+      const sampleCategory = sampleCategories.find((category) => category.id === product.categoryId);
+      if (sampleCategory) {
+        categories.set(sampleCategory.id, sampleCategory);
+        continue;
+      }
+    }
+    const legacyName = product.category?.trim() || "ทั่วไป";
+    const existing = [...categories.values()].find((category) => category.name.toLowerCase() === legacyName.toLowerCase());
+    const category = existing || { id: uniqueCategoryId(legacyName, categories), name: legacyName };
+    categories.set(category.id, category);
+    product.categoryId = category.id;
+    delete product.category;
+  }
+
+  if (!categories.has(DEFAULT_CATEGORY_ID)) categories.set(DEFAULT_CATEGORY_ID, { id: DEFAULT_CATEGORY_ID, name: "ทั่วไป" });
+  data.categories = [...categories.values()];
+}
+
+function uniqueCategoryId(name, existingCategories = null) {
+  const source = existingCategories || new Map(state.categories.map((category) => [category.id, category]));
+  const base = slugify(name) || "category";
+  let id = base;
+  let suffix = 2;
+  while (source.has(id)) {
+    id = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  return id;
+}
+
+function slugify(value) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 function productImage(product) {
