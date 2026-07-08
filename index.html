@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-title" content="Event POS">
     <title>Event POS</title>
     <link rel="manifest" href="./manifest.webmanifest">
-    <link rel="stylesheet" href="./styles.css?v=4">
+    <link rel="stylesheet" href="./styles.css?v=5">
   </head>
   <body>
     <header class="app-header">
@@ -65,6 +65,33 @@
         </div>
 
         <div id="historyView" class="view">
+          <div class="history-tools">
+            <label>
+              เลือกวันที่
+              <input id="historyDateInput" type="date">
+            </label>
+          </div>
+          <div class="history-summary">
+            <div>
+              <span>ยอดรวม</span>
+              <strong id="selectedDateSales">฿0</strong>
+            </div>
+            <div>
+              <span>จำนวนบิล</span>
+              <strong id="selectedDateBills">0</strong>
+            </div>
+            <div>
+              <span>จำนวนชิ้น</span>
+              <strong id="selectedDateItems">0</strong>
+            </div>
+          </div>
+          <section class="top-products">
+            <div class="section-head">
+              <h2>สินค้าขายดี</h2>
+              <span id="topProductsHint">เลือกวันที่เพื่อดูสรุป</span>
+            </div>
+            <div class="top-product-list" id="topProductList"></div>
+          </section>
           <div class="history-list" id="historyList"></div>
           <div class="empty-state" id="historyEmpty" hidden>
             <h2>ยังไม่มีบิล</h2>
@@ -163,6 +190,27 @@
       </form>
     </dialog>
 
+    <dialog id="receiptDialog">
+      <article class="dialog-card receipt-dialog">
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow">รายละเอียดบิล</p>
+            <h2 id="receiptTitle">#0001</h2>
+          </div>
+          <button class="icon-btn" id="closeReceiptBtn" type="button" aria-label="ปิด">×</button>
+        </div>
+        <div class="receipt-meta" id="receiptMeta"></div>
+        <div class="receipt-items" id="receiptItems"></div>
+        <div class="receipt-total-box">
+          <div><span>รวม</span><strong id="receiptSubtotal">฿0</strong></div>
+          <div><span>ส่วนลด</span><strong id="receiptDiscount">฿0</strong></div>
+          <div><span>ยอดสุทธิ</span><strong id="receiptTotal">฿0</strong></div>
+          <div><span>รับเงิน</span><strong id="receiptPaid">฿0</strong></div>
+          <div><span>เงินทอน</span><strong id="receiptChange">฿0</strong></div>
+        </div>
+      </article>
+    </dialog>
+
     <template id="productTemplate">
       <article class="product-card">
         <img class="product-photo" alt="">
@@ -178,6 +226,6 @@
       </article>
     </template>
 
-    <script src="./app.js?v=4" defer></script>
+    <script src="./app.js?v=5" defer></script>
   </body>
 </html>

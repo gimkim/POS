@@ -42,6 +42,12 @@ const els = {
   productGrid: document.querySelector("#productGrid"),
   stockList: document.querySelector("#stockList"),
   historyList: document.querySelector("#historyList"),
+  historyDateInput: document.querySelector("#historyDateInput"),
+  selectedDateSales: document.querySelector("#selectedDateSales"),
+  selectedDateBills: document.querySelector("#selectedDateBills"),
+  selectedDateItems: document.querySelector("#selectedDateItems"),
+  topProductList: document.querySelector("#topProductList"),
+  topProductsHint: document.querySelector("#topProductsHint"),
   productEmpty: document.querySelector("#productEmpty"),
   historyEmpty: document.querySelector("#historyEmpty"),
   cartItems: document.querySelector("#cartItems"),
@@ -64,6 +70,15 @@ const els = {
   categoryForm: document.querySelector("#categoryForm"),
   categoryList: document.querySelector("#categoryList"),
   categoryNameInput: document.querySelector("#categoryNameInput"),
+  receiptDialog: document.querySelector("#receiptDialog"),
+  receiptTitle: document.querySelector("#receiptTitle"),
+  receiptMeta: document.querySelector("#receiptMeta"),
+  receiptItems: document.querySelector("#receiptItems"),
+  receiptSubtotal: document.querySelector("#receiptSubtotal"),
+  receiptDiscount: document.querySelector("#receiptDiscount"),
+  receiptTotal: document.querySelector("#receiptTotal"),
+  receiptPaid: document.querySelector("#receiptPaid"),
+  receiptChange: document.querySelector("#receiptChange"),
   dialogTitle: document.querySelector("#dialogTitle"),
   deleteProductBtn: document.querySelector("#deleteProductBtn"),
   productImage: document.querySelector("#productImage"),
@@ -75,6 +90,7 @@ document.querySelector("#newProductBtn").addEventListener("click", () => openPro
 document.querySelector("#categoryBtn").addEventListener("click", openCategoryDialog);
 document.querySelector("#closeDialogBtn").addEventListener("click", () => els.productDialog.close());
 document.querySelector("#closeCategoryBtn").addEventListener("click", () => els.categoryDialog.close());
+document.querySelector("#closeReceiptBtn").addEventListener("click", () => els.receiptDialog.close());
 document.querySelector("#clearImageBtn").addEventListener("click", () => setImageField(""));
 document.querySelector("#clearCartBtn").addEventListener("click", clearCart);
 document.querySelector("#checkoutBtn").addEventListener("click", checkout);
@@ -87,6 +103,10 @@ els.searchInput.addEventListener("input", (event) => {
   render();
 });
 els.productImage.addEventListener("change", handleImagePick);
+els.historyDateInput.value = dateKey();
+els.historyDateInput.addEventListener("change", () => {
+  renderHistory();
+});
 els.categoryForm.addEventListener("submit", (event) => {
   event.preventDefault();
   addCategory();
@@ -174,8 +194,8 @@ function render() {
 }
 
 function renderSummary() {
-  const today = new Date().toISOString().slice(0, 10);
-  const todayReceipts = state.receipts.filter((receipt) => receipt.createdAt.slice(0, 10) === today);
+  const today = dateKey();
+  const todayReceipts = state.receipts.filter((receipt) => receiptDateKey(receipt) === today);
   const sales = todayReceipts.reduce((sum, receipt) => sum + receipt.total, 0);
   const low = state.products.filter((product) => product.stock > 0 && product.stock <= product.lowStock).length;
   els.todaySales.textContent = money.format(sales);
@@ -188,25 +208,43 @@ function renderProducts() {
   const products = filteredProducts();
   els.productGrid.textContent = "";
   els.productEmpty.hidden = products.length > 0;
-  const template = document.querySelector("#productTemplate");
+  if (products.length === 0) return;
 
-  for (const product of products) {
-    const card = template.content.firstElementChild.cloneNode(true);
-    const photo = card.querySelector(".product-photo");
-    photo.src = productImage(product);
-    photo.alt = product.name;
-    card.querySelector(".category").textContent = categoryName(product.categoryId);
-    card.querySelector("h3").textContent = product.name;
-    card.querySelector(".sku").textContent = product.sku || "ไม่มีรหัส";
-    card.querySelector(".price").textContent = money.format(product.price);
-    const stock = card.querySelector(".stock");
-    stock.textContent = `เหลือ ${product.stock}`;
-    stock.classList.toggle("low", product.stock > 0 && product.stock <= product.lowStock);
-    stock.classList.toggle("out", product.stock <= 0);
-    card.classList.toggle("out", product.stock <= 0);
-    card.addEventListener("click", () => addToCart(product.id));
-    els.productGrid.append(card);
+  for (const category of groupedProducts(products)) {
+    const section = document.createElement("section");
+    section.className = "product-group";
+    section.innerHTML = `
+      <div class="product-group-head">
+        <h2>${escapeHtml(category.name)}</h2>
+        <span>${category.products.length} รายการ</span>
+      </div>
+      <div class="product-group-grid"></div>
+    `;
+    const grid = section.querySelector(".product-group-grid");
+    for (const product of category.products) {
+      grid.append(createProductCard(product));
+    }
+    els.productGrid.append(section);
   }
+}
+
+function createProductCard(product) {
+  const template = document.querySelector("#productTemplate");
+  const card = template.content.firstElementChild.cloneNode(true);
+  const photo = card.querySelector(".product-photo");
+  photo.src = productImage(product);
+  photo.alt = product.name;
+  card.querySelector(".category").textContent = categoryName(product.categoryId);
+  card.querySelector("h3").textContent = product.name;
+  card.querySelector(".sku").textContent = product.sku || "ไม่มีรหัส";
+  card.querySelector(".price").textContent = money.format(product.price);
+  const stock = card.querySelector(".stock");
+  stock.textContent = `เหลือ ${product.stock}`;
+  stock.classList.toggle("low", product.stock > 0 && product.stock <= product.lowStock);
+  stock.classList.toggle("out", product.stock <= 0);
+  card.classList.toggle("out", product.stock <= 0);
+  card.addEventListener("click", () => addToCart(product.id));
+  return card;
 }
 
 function renderStock() {
@@ -240,8 +278,11 @@ function renderStock() {
 
 function renderHistory() {
   els.historyList.textContent = "";
-  els.historyEmpty.hidden = state.receipts.length > 0;
-  for (const receipt of [...state.receipts].reverse()) {
+  const selectedDate = els.historyDateInput.value || dateKey();
+  const receipts = state.receipts.filter((receipt) => receiptDateKey(receipt) === selectedDate);
+  renderHistorySummary(receipts);
+  els.historyEmpty.hidden = receipts.length > 0;
+  for (const receipt of [...receipts].reverse()) {
     const row = document.createElement("article");
     row.className = "history-row";
     const itemCount = receipt.items.reduce((sum, item) => sum + item.qty, 0);
@@ -255,6 +296,44 @@ function renderHistory() {
     row.querySelector("button").addEventListener("click", () => showReceipt(receipt));
     els.historyList.append(row);
   }
+}
+
+function renderHistorySummary(receipts) {
+  const totalSales = receipts.reduce((sum, receipt) => sum + receipt.total, 0);
+  const totalItems = receipts.reduce((sum, receipt) => sum + receipt.items.reduce((itemSum, item) => itemSum + item.qty, 0), 0);
+  els.selectedDateSales.textContent = money.format(totalSales);
+  els.selectedDateBills.textContent = receipts.length.toString();
+  els.selectedDateItems.textContent = totalItems.toString();
+
+  const products = summarizeTopProducts(receipts);
+  els.topProductList.textContent = "";
+  els.topProductsHint.textContent = products.length ? "เรียงตามจำนวนชิ้นที่ขายได้" : "ยังไม่มีสินค้าขายในวันนี้";
+  for (const product of products.slice(0, 5)) {
+    const row = document.createElement("div");
+    row.className = "top-product-row";
+    row.innerHTML = `
+      <div>
+        <strong>${escapeHtml(product.name)}</strong>
+        <small>${product.qty} ชิ้น · ${money.format(product.total)}</small>
+      </div>
+      <span>${money.format(product.total)}</span>
+    `;
+    els.topProductList.append(row);
+  }
+}
+
+function summarizeTopProducts(receipts) {
+  const byProduct = new Map();
+  for (const receipt of receipts) {
+    for (const item of receipt.items) {
+      const key = item.productId || item.sku || item.name;
+      const current = byProduct.get(key) || { name: item.name, qty: 0, total: 0 };
+      current.qty += item.qty;
+      current.total += item.total;
+      byProduct.set(key, current);
+    }
+  }
+  return [...byProduct.values()].sort((a, b) => b.qty - a.qty || b.total - a.total);
 }
 
 function addToCart(productId) {
@@ -512,18 +591,33 @@ function setImageField(value) {
 }
 
 function showReceipt(receipt) {
-  const lines = receipt.items
-    .map((item) => `${item.name} x${item.qty} = ${money.format(item.total)}`)
-    .join("\n");
-  alert(
-    `#${String(receipt.billNo).padStart(4, "0")}\n` +
-      `${formatDate(receipt.createdAt)}\n` +
-      `ลูกค้า: ${receipt.customerName || "ไม่ระบุ"}\n` +
-      `จ่ายด้วย: ${paymentLabel(receipt.paymentMethod)}\n\n` +
-      `${lines}\n\n` +
-      `ส่วนลด ${money.format(receipt.discount)}\n` +
-      `รวมสุทธิ ${money.format(receipt.total)}`
-  );
+  els.receiptTitle.textContent = `#${String(receipt.billNo).padStart(4, "0")}`;
+  els.receiptMeta.innerHTML = `
+    <div><span>เวลา</span><strong>${formatDate(receipt.createdAt)}</strong></div>
+    <div><span>ลูกค้า</span><strong>${escapeHtml(receipt.customerName || "ไม่ระบุ")}</strong></div>
+    <div><span>จ่ายด้วย</span><strong>${paymentLabel(receipt.paymentMethod)}</strong></div>
+  `;
+  els.receiptItems.textContent = "";
+  for (const item of receipt.items) {
+    const row = document.createElement("div");
+    row.className = "receipt-item";
+    row.innerHTML = `
+      <img src="${item.image || PLACEHOLDER_IMAGE}" alt="${escapeHtml(item.name)}">
+      <div>
+        <strong>${escapeHtml(item.name)}</strong>
+        <small>${escapeHtml(item.sku || "ไม่มีรหัส")} · ${money.format(item.price)} x ${item.qty}</small>
+      </div>
+      <span>${money.format(item.total)}</span>
+    `;
+    els.receiptItems.append(row);
+  }
+  const paid = Number(receipt.paid || 0);
+  els.receiptSubtotal.textContent = money.format(receipt.subtotal || receipt.total);
+  els.receiptDiscount.textContent = money.format(receipt.discount || 0);
+  els.receiptTotal.textContent = money.format(receipt.total);
+  els.receiptPaid.textContent = money.format(paid);
+  els.receiptChange.textContent = money.format(Math.max(0, paid - receipt.total));
+  els.receiptDialog.showModal();
 }
 
 function exportData() {
@@ -542,6 +636,16 @@ function findProduct(id) {
 
 function categoryName(id) {
   return state.categories.find((category) => category.id === id)?.name || "ทั่วไป";
+}
+
+function groupedProducts(products) {
+  return state.categories
+    .map((category) => ({
+      id: category.id,
+      name: category.name,
+      products: products.filter((product) => (product.categoryId || DEFAULT_CATEGORY_ID) === category.id)
+    }))
+    .filter((category) => category.products.length > 0);
 }
 
 function migrateCategories(data) {
@@ -607,6 +711,18 @@ function formatDate(value) {
     dateStyle: "medium",
     timeStyle: "short"
   }).format(new Date(value));
+}
+
+function dateKey(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function receiptDateKey(receipt) {
+  return dateKey(receipt.createdAt);
 }
 
 function escapeHtml(value) {

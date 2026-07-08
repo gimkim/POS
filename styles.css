@@ -175,7 +175,29 @@ input:focus, select:focus {
 .view { display: none; }
 .view.active { display: block; }
 
-.product-grid {
+.product-grid, .product-group {
+  display: grid;
+  gap: 14px;
+}
+
+.product-group-head, .section-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.product-group-head h2, .section-head h2 {
+  margin-bottom: 0;
+}
+
+.product-group-head span, .section-head span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.product-group-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
   gap: 12px;
@@ -362,9 +384,74 @@ input:focus, select:focus {
   font-size: 18px;
 }
 
-.stock-list, .history-list {
+.stock-list, .history-list, .top-product-list {
   display: grid;
   gap: 10px;
+}
+
+.history-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.history-tools label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  min-width: 220px;
+}
+
+.history-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.history-summary div, .top-products {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.history-summary span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.history-summary strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 22px;
+}
+
+.top-products {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.top-product-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.top-product-row:first-child {
+  border-top: 0;
+}
+
+.top-product-row small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
 }
 
 .stock-row, .history-row {
@@ -404,6 +491,10 @@ dialog {
   box-shadow: var(--shadow);
 }
 
+#receiptDialog {
+  width: min(680px, calc(100vw - 28px));
+}
+
 dialog::backdrop {
   background: rgba(8, 20, 19, 0.45);
 }
@@ -412,6 +503,76 @@ dialog::backdrop {
   padding: 18px;
   display: grid;
   gap: 14px;
+}
+
+.receipt-dialog {
+  max-height: min(760px, calc(100vh - 36px));
+  overflow: auto;
+}
+
+.receipt-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.receipt-meta div, .receipt-total-box {
+  background: #f6faf8;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.receipt-meta span, .receipt-total-box span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.receipt-meta strong {
+  display: block;
+  margin-top: 4px;
+}
+
+.receipt-items {
+  display: grid;
+  gap: 8px;
+}
+
+.receipt-item {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.receipt-item img {
+  width: 58px;
+  height: 58px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #e6efec;
+}
+
+.receipt-item small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.receipt-total-box {
+  display: grid;
+  gap: 8px;
+}
+
+.receipt-total-box div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .dialog-head {
@@ -527,6 +688,10 @@ dialog::backdrop {
   .stock-actions {
     flex-wrap: wrap;
   }
+
+  .receipt-meta, .history-summary {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 560px) {
@@ -540,6 +705,10 @@ dialog::backdrop {
   }
 
   .product-grid {
+    gap: 18px;
+  }
+
+  .product-group-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -562,5 +731,22 @@ dialog::backdrop {
 
   .category-add {
     grid-template-columns: 1fr;
+  }
+
+  .history-tools {
+    justify-content: stretch;
+  }
+
+  .history-tools label {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .receipt-item {
+    grid-template-columns: 52px minmax(0, 1fr);
+  }
+
+  .receipt-item span {
+    grid-column: 2;
   }
 }
