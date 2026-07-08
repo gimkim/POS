@@ -61,6 +61,10 @@ const els = {
   historyEmpty: document.querySelector("#historyEmpty"),
   cartItems: document.querySelector("#cartItems"),
   emptyCart: document.querySelector("#emptyCart"),
+  checkoutDialog: document.querySelector("#checkoutDialog"),
+  checkoutTitle: document.querySelector("#checkoutTitle"),
+  checkoutReviewItems: document.querySelector("#checkoutReviewItems"),
+  checkoutButtonTotal: document.querySelector("#checkoutButtonTotal"),
   subtotal: document.querySelector("#subtotal"),
   promotionDiscount: document.querySelector("#promotionDiscount"),
   manualDiscount: document.querySelector("#manualDiscount"),
@@ -106,12 +110,14 @@ document.querySelector("#categoryBtn").addEventListener("click", openCategoryDia
 document.querySelector("#closeDialogBtn").addEventListener("click", () => els.productDialog.close());
 document.querySelector("#closeCategoryBtn").addEventListener("click", () => els.categoryDialog.close());
 document.querySelector("#closeReceiptBtn").addEventListener("click", () => els.receiptDialog.close());
+document.querySelector("#closeCheckoutBtn").addEventListener("click", () => els.checkoutDialog.close());
 document.querySelector("#clearImageBtn").addEventListener("click", () => {
   els.productImageKeyData.value = "";
   setImageField("");
 });
 document.querySelector("#clearCartBtn").addEventListener("click", clearCart);
-document.querySelector("#checkoutBtn").addEventListener("click", checkout);
+document.querySelector("#checkoutBtn").addEventListener("click", openCheckoutDialog);
+document.querySelector("#confirmCheckoutBtn").addEventListener("click", checkout);
 document.querySelector("#exportBtn").addEventListener("click", exportData);
 document.querySelector("#importBtn").addEventListener("click", () => els.importZipInput.click());
 els.importZipInput.addEventListener("change", importDataZip);
@@ -525,6 +531,36 @@ function renderCart() {
   els.manualDiscount.textContent = discountText(manualDiscount);
   els.grandTotal.textContent = money.format(total);
   els.changeDue.textContent = money.format(Math.max(0, paid - total));
+  els.checkoutButtonTotal.textContent = money.format(total);
+  document.querySelector("#checkoutBtn").disabled = state.cart.length === 0;
+  renderCheckoutReview();
+}
+
+function openCheckoutDialog() {
+  if (state.cart.length === 0) return;
+  els.checkoutTitle.textContent = `#${String(state.nextBill).padStart(4, "0")}`;
+  renderCart();
+  els.checkoutDialog.showModal();
+}
+
+function renderCheckoutReview() {
+  if (!els.checkoutReviewItems) return;
+  els.checkoutReviewItems.textContent = "";
+  for (const line of state.cart) {
+    const product = findProduct(line.productId);
+    if (!product) continue;
+    const row = document.createElement("div");
+    row.className = "checkout-review-line";
+    row.innerHTML = `
+      <img class="cart-thumb" src="${productImage(product)}" alt="${escapeHtml(product.name)}">
+      <div>
+        <strong>${escapeHtml(product.name)}</strong>
+        <small>${escapeHtml(categoryName(product.categoryId))} · ${money.format(product.price)} x ${line.qty}</small>
+      </div>
+      <span>${money.format(product.price * line.qty)}</span>
+    `;
+    els.checkoutReviewItems.append(row);
+  }
 }
 
 function changeCartQty(productId, qty) {
@@ -632,6 +668,7 @@ function checkout() {
   els.paymentMethod.value = "cash";
   els.discountInput.value = "0";
   els.paidInput.value = "";
+  if (els.checkoutDialog.open) els.checkoutDialog.close();
   saveState();
   render();
 }
@@ -642,6 +679,7 @@ function clearCart() {
   els.paymentMethod.value = "cash";
   els.discountInput.value = "0";
   els.paidInput.value = "";
+  if (els.checkoutDialog.open) els.checkoutDialog.close();
   saveState();
   renderCart();
 }

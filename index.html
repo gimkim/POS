@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-title" content="Event POS">
     <title>Event POS</title>
     <link rel="manifest" href="./manifest.webmanifest">
-    <link rel="stylesheet" href="./styles.css?v=11">
+    <link rel="stylesheet" href="./styles.css?v=12">
   </head>
   <body>
     <header class="app-header">
@@ -114,7 +114,26 @@
         <div class="cart-items" id="cartItems"></div>
         <div class="empty-cart" id="emptyCart">แตะสินค้าเพื่อเพิ่มลงบิล</div>
 
-        <div class="checkout-box">
+        <div class="checkout-box cart-checkout-box">
+          <button class="checkout" id="checkoutBtn" type="button">
+            <span>ปิดการขาย</span>
+            <strong id="checkoutButtonTotal">฿0</strong>
+          </button>
+        </div>
+      </aside>
+    </main>
+
+    <dialog id="checkoutDialog">
+      <article class="dialog-card checkout-dialog">
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow">ปิดการขาย</p>
+            <h2 id="checkoutTitle">บิลปัจจุบัน</h2>
+          </div>
+          <button class="icon-btn" id="closeCheckoutBtn" type="button" aria-label="ปิด">×</button>
+        </div>
+        <div class="checkout-review-items" id="checkoutReviewItems"></div>
+        <div class="checkout-box checkout-detail-box">
           <label>
             ชื่อลูกค้า
             <input id="customerInput" autocomplete="off" placeholder="เช่น คุณแอน / ลูกค้าหน้าร้าน">
@@ -143,10 +162,10 @@
             <div><span>ยอดสุทธิ</span><strong id="grandTotal">฿0</strong></div>
             <div><span>เงินทอน</span><strong id="changeDue">฿0</strong></div>
           </div>
-          <button class="checkout" id="checkoutBtn" type="button">ปิดการขาย</button>
+          <button class="checkout" id="confirmCheckoutBtn" type="button">ยืนยันปิดการขาย</button>
         </div>
-      </aside>
-    </main>
+      </article>
+    </dialog>
 
     <dialog id="productDialog">
       <form method="dialog" id="productForm" class="dialog-card">
@@ -231,6 +250,6 @@
       </article>
     </template>
 
-    <script src="./app.js?v=11" defer></script>
+    <script src="./app.js?v=12" defer></script>
   </body>
 </html>

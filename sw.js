@@ -1,5 +1,5 @@
-const CACHE_NAME = "event-pos-v11";
-const ASSETS = ["./", "./index.html", "./styles.css?v=11", "./app.js?v=11", "./manifest.webmanifest", "./icon.svg"];
+const CACHE_NAME = "event-pos-v12";
+const ASSETS = ["./", "./index.html", "./styles.css?v=12", "./app.js?v=12", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));

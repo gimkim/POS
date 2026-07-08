@@ -292,6 +292,8 @@ input:focus, select:focus {
   align-self: start;
   display: flex;
   flex-direction: column;
+  height: calc(100vh - 116px);
+  min-height: 560px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -308,7 +310,9 @@ input:focus, select:focus {
 }
 
 .cart-items {
-  overflow: visible;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
   padding: 10px 16px;
 }
 
@@ -364,6 +368,10 @@ input:focus, select:focus {
   gap: 12px;
 }
 
+.cart-checkout-box {
+  flex: 0 0 auto;
+}
+
 .checkout-box label, .dialog-card label {
   display: grid;
   gap: 6px;
@@ -391,6 +399,23 @@ input:focus, select:focus {
   width: 100%;
   min-height: 52px;
   font-size: 18px;
+}
+
+.checkout:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.cart-checkout-box .checkout {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 0 18px;
+}
+
+.cart-checkout-box .checkout strong {
+  font-size: 22px;
 }
 
 .stock-list, .history-list, .top-product-list {
@@ -500,7 +525,7 @@ dialog {
   box-shadow: var(--shadow);
 }
 
-#receiptDialog {
+#receiptDialog, #checkoutDialog {
   width: min(680px, calc(100vw - 28px));
 }
 
@@ -521,6 +546,44 @@ dialog::backdrop {
 .receipt-dialog {
   max-height: min(760px, calc(100vh - 36px));
   overflow: auto;
+}
+
+.checkout-dialog {
+  max-height: min(820px, calc(100vh - 36px));
+  overflow: auto;
+}
+
+.checkout-detail-box {
+  padding: 0;
+  border-top: 0;
+}
+
+.checkout-review-items {
+  display: grid;
+  gap: 8px;
+  max-height: min(320px, 38vh);
+  overflow: auto;
+}
+
+.checkout-review-line {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfc;
+}
+
+.checkout-review-line small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.checkout-review-line span {
+  font-weight: 850;
 }
 
 .receipt-meta {
@@ -710,7 +773,12 @@ dialog::backdrop {
 
   .cart-panel {
     position: static;
-    max-height: none;
+    height: auto;
+    min-height: 0;
+  }
+
+  .cart-items {
+    overflow: visible;
   }
 
   .toolbar, .app-header {
